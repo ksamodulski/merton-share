@@ -11,6 +11,7 @@ Generate portfolio optimization inputs based on rigorous market analysis using w
 - Fully documented in metadata
 
 ## ASSETS
+
 1. Polish Inflation-Linked Bond COI1228
 
     ISIN: [specific ISIN]
@@ -43,17 +44,6 @@ Generate portfolio optimization inputs based on rigorous market analysis using w
     Primary Data Source: WisdomTree website
     Secondary Data Source: Silver spot price in EUR
 
-5. iShares Core MSCI Europe UCITS ETF EUR (Acc) (EUNK)
-
-    Name: iShares Core MSCI Europe UCITS ETF EUR (Acc)
-    Ticker: XETRA:EUNK
-    ISIN: IE00B4K48X80
-    Fund Size: €7,702 million
-    TER (Total Expense Ratio): 0.12%
-    Fund Currency: EUR
-    Distribution Policy: Accumulating
-    Primary Data Source: justETF Profile
-    Date Verified: 2024-12-31
 
 ## DATA SPECIFICATIONS
 
@@ -123,28 +113,7 @@ Generate portfolio optimization inputs based on rigorous market analysis using w
     "base_currency": "EUR",
     "calculation_date": "YYYY-MM-DD",
     "data_sources": {
-      "COI1228": {
-        "primary_source": "string",
-        "secondary_source": "string",
-        "data_quality": "high/medium/low",
-        "calculation_notes": "string",
-        "data_exceptions": "string"
-      },
-      "ETFSP500": {
-        "primary_source": "string",
-        "secondary_source": "string",
-        "data_quality": "high/medium/low",
-        "calculation_notes": "string",
-        "data_exceptions": "string"
-      },
-      "4GLD": {
-        "primary_source": "string",
-        "secondary_source": "string",
-        "data_quality": "high/medium/low",
-        "calculation_notes": "string",
-        "data_exceptions": "string"
-      },
-      "VZLC": {
+      "asset_name": {
         "primary_source": "string",
         "secondary_source": "string",
         "data_quality": "high/medium/low",
@@ -173,17 +142,13 @@ Generate portfolio optimization inputs based on rigorous market analysis using w
 ```
 
 ## MANDATORY VALIDATION CHECKLIST
-1. sample output:
+1. sample output format:
 {
-  "assets": ["COI1228", "ETFSP500", "4GLD", "VZLC", "EUNK"],
-  "returns": [0.0600, 0.1200, 0.0800, 0.0700, 0.1000],
-  "volatilities": [0.0200, 0.1800, 0.2000, 0.2200, 0.1600],
+  "assets": ["COI1228", "ETFSP500", "4GLD", "VZLC"],
+  "returns": [],
+  "volatilities": [],
   "correlations": [
-    [1.0000, 0.2000, 0.1500, 0.1000, 0.2500],
-    [0.2000, 1.0000, 0.3000, 0.2500, 0.6000],
-    [0.1500, 0.3000, 1.0000, 0.5000, 0.2000],
-    [0.1000, 0.2500, 0.5000, 1.0000, 0.1500],
-    [0.2500, 0.6000, 0.2000, 0.1500, 1.0000]
+ 
   ],
   "crra": 2.9
 }
