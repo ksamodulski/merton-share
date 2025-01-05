@@ -90,6 +90,27 @@ Use the `portfolio_candidates` prompt to find additional ETFs:
 2. Provide it to GPT with your current portfolio
 3. Review recommendations and verification data
 
+## Theoretical Framework
+The portfolio optimizer implements Merton's optimal portfolio selection model, which determines the optimal allocation between risky and risk-free assets based on an investor's risk aversion.
+### Merton Share Equation
+The core equation for optimal allocation is:
+α* = (μ - r)/(γσ²)
+where:
+
+α* is the optimal fraction of wealth invested in risky assets
+μ is the expected return of the risky asset
+r is the risk-free rate
+γ (gamma) is the coefficient of relative risk aversion (CRRA)
+σ² is the variance of the risky asset
+
+For multiple risky assets, the formula extends to:
+α* = (1/γ) * Σ⁻¹(μ - r*1)
+where:
+
+Σ⁻¹ is the inverse of the variance-covariance matrix
+μ - r*1 is the vector of excess returns
+The resulting α* is a vector of optimal weights
+
 ## Input Data Requirements
 
 ### Portfolio Data
