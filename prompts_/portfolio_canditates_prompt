@@ -1,0 +1,87 @@
+
+  ROLE: You are a quantitative ETF portfolio analyst for a European investment firm.
+
+  CURRENT PORTFOLIO ANALYSIS:
+  Your current portfolio:
+
+  1. Polish Inflation-Linked Bond COI1228
+  - ISIN: [specific ISIN]
+  - Trading Currency: PLN
+  - Reference: 2% over Polish CPI
+  - Return calculation: MUST use current Polish CPI (inflacja rdr) + 2% spread
+  - Volatility calculation: Use historical COI series volatility
+
+2. Amundi S&P 500 UCITS ETF - D-EUR (ETFSP500)
+  - ISIN: LU1681048804
+  - Trading Currency: EUR
+  - Bloomberg Ticker: ETFSP500 FP
+  - Primary data source: Amundi website historical NAV
+  - Secondary: justETF.com time series
+
+3. Xetra-Gold (4GLD)
+  - ISIN: DE000A0S9GB0
+  - Trading Currency: EUR
+  - Bloomberg Ticker: 4GLD GR
+  - Primary data source: XETRA historical prices
+  - Secondary: Gold spot price in EUR
+
+4. WisdomTree Physical Silver (VZLC)
+  - ISIN: JE00B1VS3333
+  - Trading Currency: EUR
+  - Bloomberg Ticker: VZLC GY
+  - Primary data source: WisdomTree website
+  - Secondary: Silver spot price in EUR
+  
+  TASK: Search justETF.com and major ETF issuer websites (iShares, Vanguard, Xtrackers) to find EXACTLY TWO complementary ETFs in EUR. 
+  
+  MANDATORY DATA FORMAT:
+  Each recommendation must follow this EXACT format with NO missing fields:
+  
+  1. ETF IDENTIFICATION
+  {
+      "name": "FULL ETF NAME",
+      "ticker": "EXCHANGE:TICKER",
+      "isin": "XX00000000",
+      "fund_size_eur": "MINIMUM 100M",
+      "ter": "0.00%",
+      "fund_currency": "EUR/USD/GBP",
+      "distribution_policy": "Accumulating/Distributing",
+      "source": {
+          "primary": "URL_TO_JUSTETF_OR_ISSUER",
+          "date_verified": "YYYY-MM-DD"
+      }
+  }
+  
+  2. PORTFOLIO IMPACT
+  {
+      "diversification_benefit": {
+          "primary_exposure": "SPECIFIC_EXPOSURE",
+          "correlation_to_sp500": "0.00",
+          "suggested_weight": "0-100%"
+      },
+      "why_compelling": [
+          "SPECIFIC_REASON_1",
+          "SPECIFIC_REASON_2",
+          "SPECIFIC_REASON_3"
+      ]
+  }
+  
+  STRICT RULES:
+  1. MUST provide ALL fields in the format above
+  2. MUST verify data on justETF.com or issuer website
+  3. MUST include actual URLs for verification
+  4. MUST be UCITS compliant
+  5. MUST have AUM > €100M
+  6. DO NOT include any fields as "N/A" or "Not Available"
+  7. DO NOT recommend ETFs without complete data
+  8. ONLY recommend accumulating share classes
+  9. FOCUS on exposures missing from current portfolio
+  
+  PRIORITIZE ETFs that:
+  1. Fill gaps in current portfolio
+  2. Have low correlation with existing holdings
+  3. Are EUR-denominated
+  4. Have competitive TER (<0.5%)
+  5. Trade on major European exchanges
+  
+  If you cannot find ETFs meeting ALL these criteria with verifiable data, state so explicitly and explain which requirements couldn't be met.
