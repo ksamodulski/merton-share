@@ -1,0 +1,367 @@
+# ETF Allocation Research - Data Gathering
+
+---
+
+## SECTION A: USER INPUTS (Fill These In)
+
+### A1. Portfolio Screenshot
+
+<<< [Attach screenshot from IBKR] >>>
+
+### A2. New Contribution
+
+```
+
+Amount: 2000 EUR
+
+```
+
+### A3. Bond Position
+
+```
+
+Amount (PLN):     100 000
+
+Locked until:     2030 (year)
+
+Current yield:    6%
+
+```
+
+### A4. Any ETFs You're Considering Adding?
+
+```
+
+[x] None currently
+
+[ ] Researching: ________________
+
+```
+
+### A5. Any Changes to Your Profile?
+
+```
+
+[x] No changes
+
+[ ] Updated risk tolerance: ______
+
+[ ] Updated time horizon: ______
+
+[ ] Other: ______
+
+```
+
+---
+
+## SECTION B: CLAUDE GATHERS (Search For All Below)
+
+### B1. Read Portfolio from Screenshot
+
+Extract from the attached image:
+
+| Ticker | Current Value (€) | % of Portfolio |
+
+|--------|-------------------|----------------|
+
+### B2. Verify Each ETF
+
+Search justETF.com for each ticker:
+
+| Ticker | Full Name | ISIN | Index | Acc/Dist | TER | Domicile | Top 5 Holdings |
+
+|--------|-----------|------|-------|----------|-----|----------|----------------|
+
+**Flag any that violate constraints:**
+
+- ❌ Distributing (not Accumulating)
+
+- ❌ Non-EUR denominated
+
+- ❌ TER > 0.50%
+
+- ❌ Non-UCITS
+
+### B3. Current Valuations
+
+Search Siblis Research, Multpl, Yardeni, or institutional reports:
+
+| Region | CAPE | Fwd P/E | Source & Date |
+
+|--------|------|---------|---------------|
+
+| US (S&P 500) | | | |
+
+| Europe (Stoxx 600) | | | |
+
+| Japan (Topix) | | | |
+
+| Emerging Markets | | | |
+
+### B4. Historical Valuation Context
+
+Search for historical averages:
+
+| Region | Current CAPE | 10Y Avg | 20Y Avg | Percentile vs History |
+
+|--------|--------------|---------|---------|----------------------|
+
+| US | | | | |
+
+| Europe | | | | |
+
+| Japan | | | | |
+
+| EM | | | | |
+
+### B5. Dividend Yields
+
+Search for current dividend yields:
+
+| Region | Dividend Yield | Source |
+
+|--------|----------------|--------|
+
+| US (S&P 500) | | |
+
+| Europe (Stoxx 600) | | |
+
+| Japan (Topix) | | |
+
+| EM (MSCI EM) | | |
+
+### B6. Volatility
+
+Search CBOE, Bloomberg, or financial news:
+
+| Asset | Implied Vol | 1Y Realized Vol | Source |
+
+|-------|-------------|-----------------|--------|
+
+| US (VIX) | | | |
+
+| Europe (VSTOXX) | | | |
+
+| EM (VXEEM or proxy) | | | |
+
+| Gold (GVZ or proxy) | | | |
+
+### B7. Risk-Free Rate
+
+Search for:
+
+| Rate | Current Value | Source |
+
+|------|---------------|--------|
+
+| ECB Deposit Facility Rate | | |
+
+| German 1Y Bund Yield | | |
+
+### B8. EUR/PLN Exchange Rate
+
+Search for current rate:
+
+| Pair | Rate | Source |
+
+|------|------|--------|
+
+| EUR/PLN | | |
+
+### B9. Institutional Views
+
+Search for recent views (last 60 days) from BlackRock, Vanguard, Goldman Sachs, JPMorgan, Fidelity:
+
+| Region/Theme | Institution | Date | Stance (OW/N/UW) | Key Rationale |
+
+|--------------|-------------|------|------------------|---------------|
+
+| US Equities | | | | |
+
+| Europe Equities | | | | |
+
+| Japan Equities | | | | |
+
+| EM Equities | | | | |
+
+| China | | | | |
+
+| Gold | | | | |
+
+| AI/Tech | | | | |
+
+---
+
+## SECTION C: OUTPUT
+
+Compile everything into this exact format:
+
+```
+
+=== DATA PACKAGE FOR ANALYSIS ===
+
+Generated: [date]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+USER-PROVIDED DATA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+NEW CONTRIBUTION: €[amount from A2]
+
+BOND POSITION:
+
+- Amount: [from A3] PLN
+
+- EUR equivalent: €[calculated using B8 rate]
+
+- Locked until: [from A3]
+
+- Yield: [from A3, or "not provided"]
+
+PROFILE CHANGES: [from A5, or "None"]
+
+ETFs UNDER CONSIDERATION: [from A4, or "None"]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PORTFOLIO (from screenshot)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+| Ticker | Full Name | ISIN | Value (€) | % | Acc/Dist | TER |
+
+|--------|-----------|------|-----------|---|----------|-----|
+
+| | | | | | | |
+
+TOTAL ETF PORTFOLIO: €[sum]
+
+TOTAL PORTFOLIO (incl. bonds): €[ETFs + bond EUR equivalent]
+
+CONSTRAINT FLAGS:
+
+- [list any issues, or "All ETFs compliant"]
+
+AI INFRASTRUCTURE EXPOSURE (in current holdings):
+
+- [list any AI-related names in top holdings: ASML, TSMC, Samsung, Nvidia, etc.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MARKET DATA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VALUATIONS:
+
+| Region | CAPE | Fwd P/E | Div Yield | Source |
+
+|--------|------|---------|-----------|--------|
+
+| US | | | | |
+
+| Europe | | | | |
+
+| Japan | | | | |
+
+| EM | | | | |
+
+HISTORICAL CONTEXT:
+
+| Region | Current CAPE | 10Y Avg | 20Y Avg | vs History |
+
+|--------|--------------|---------|---------|------------|
+
+| US | | | | |
+
+| Europe | | | | |
+
+| Japan | | | | |
+
+| EM | | | | |
+
+SUGGESTED THRESHOLDS (based on historical averages):
+
+| Region | Cautious If | Favorable If | Rationale |
+
+|--------|-------------|--------------|-----------|
+
+| US | CAPE > __ or P/E > __ | CAPE < __ | [vs 20Y avg] |
+
+| Europe | P/E > __ | P/E < __ | |
+
+| Japan | CAPE > __ | CAPE < __ | |
+
+| EM | P/E > __ | P/E < __ | |
+
+VOLATILITY:
+
+| Asset | Implied | Realized 1Y | Use for Merton |
+
+|-------|---------|-------------|----------------|
+
+| US | | | |
+
+| Europe | | | |
+
+| EM | | | |
+
+| Gold | | | |
+
+RATES:
+
+- EUR Risk-Free Rate: [ECB or Bund]%
+
+- EUR/PLN: [rate]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INSTITUTIONAL VIEWS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+| Region | Stance | Sources | Key Drivers |
+
+|--------|--------|---------|-------------|
+
+| US | OW / N / UW | | |
+
+| Europe | OW / N / UW | | |
+
+| Japan | OW / N / UW | | |
+
+| EM | OW / N / UW | | |
+
+| Gold | OW / N / UW | | |
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DATA GAPS (for user to fill manually)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- [list any data points that could not be found]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SOURCES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- [URL 1]
+
+- [URL 2]
+
+- ...
+
+```
+
+---
+
+## NOTES
+
+- If any data point cannot be found, write "NOT FOUND - user to verify"
+
+- Do not proceed to analysis — user will review this Data Package, fill any gaps, then paste into analysis prompt
