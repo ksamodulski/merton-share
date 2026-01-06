@@ -1,43 +1,40 @@
-You are analyzing ETF tickers from a European brokerage (Interactive Brokers). For each ticker, identify its details.
+Identify the following ETF tickers and provide details for each.
 
-Tickers to analyze: {tickers}
+Tickers to identify:
+{tickers}
 
-For each ETF, provide:
-- **ticker**: The original ticker symbol
-- **region**: Primary geographic/asset exposure. Must be one of: "US", "Europe", "Japan", "EM", "Gold"
-  - US: S&P 500, Nasdaq, US total market, US sectors
-  - Europe: STOXX 600, Euro STOXX, European country-specific
-  - Japan: Nikkei, TOPIX, Japan-focused
-  - EM: Emerging Markets, MSCI EM, specific EM countries (China, India, Brazil, etc.)
-  - Gold: Gold ETCs, gold miners, precious metals
-- **name**: Full ETF name
-- **isin**: ISIN code (if you know it)
-- **ter**: Total Expense Ratio as decimal (e.g., 0.002 for 0.20%)
-- **is_accumulating**: true if accumulating, false if distributing
-- **description**: Brief description of what this ETF tracks
+For each ticker, determine:
+1. **region**: The primary geographic exposure. Must be one of: US, Europe, Japan, EM, Gold
+   - US: S&P 500, NASDAQ, US total market, or >50% US exposure
+   - Europe: European stocks (Stoxx 600, MSCI Europe, individual European countries)
+   - Japan: Japanese stocks (Nikkei, TOPIX, MSCI Japan)
+   - EM: Emerging Markets (MSCI EM, individual EM countries)
+   - Gold: Gold ETFs, gold miners, precious metals
+   - For global/world ETFs, assign based on largest regional weight (usually US)
 
-Common European ETF providers: iShares, Xtrackers, Amundi, Vanguard, SPDR, Invesco, WisdomTree.
+2. **name**: Full ETF name
 
-Return ONLY valid JSON array:
-[
-  {{
-    "ticker": "4GLD",
-    "region": "Gold",
-    "name": "Xetra-Gold ETC",
-    "isin": "DE000A0S9GB0",
-    "ter": 0.0,
-    "is_accumulating": true,
-    "description": "Physical gold ETC backed by gold bars"
-  }},
-  {{
-    "ticker": "IEMA",
-    "region": "EM",
-    "name": "iShares Core MSCI EM IMI UCITS ETF",
-    "isin": "IE00BKM4GZ66",
-    "ter": 0.0018,
-    "is_accumulating": true,
-    "description": "Tracks MSCI Emerging Markets Investable Market Index"
-  }}
-]
+3. **isin**: ISIN code if known (format: 2 letters + 10 alphanumeric)
 
-If you don't recognize a ticker, make your best guess based on the ticker name pattern and note uncertainty in the description.
+4. **ter**: Total Expense Ratio as decimal (e.g., 0.0020 for 0.20%)
+
+5. **is_accumulating**: true if accumulating (reinvests dividends), false if distributing, null if unknown
+
+6. **note**: Optional note for special cases (e.g., "Global ETF - 60% US weighted")
+
+Return ONLY valid JSON in this exact format:
+{{
+  "results": [
+    {{
+      "ticker": "EXAMPLE",
+      "region": "US",
+      "name": "Example ETF Name",
+      "isin": "IE00XXXXXXXXXX",
+      "ter": 0.0020,
+      "is_accumulating": true,
+      "note": null
+    }}
+  ]
+}}
+
+If you cannot identify a ticker, still include it with region "Unknown" and null for other fields.

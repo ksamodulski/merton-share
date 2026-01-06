@@ -165,6 +165,23 @@ export const portfolioApi = {
       `/portfolio/bonds/convert?amount_pln=${amountPln}&eur_pln_rate=${eurPlnRate}`,
       { method: 'POST' }
     ),
+
+  lookupEtfs: (tickers: string[]) =>
+    request<{
+      etfs: Array<{
+        ticker: string;
+        region: string;
+        name?: string;
+        isin?: string;
+        ter?: number;
+        is_accumulating?: boolean;
+        note?: string;
+      }>;
+      lookup_source: string;
+    }>('/portfolio/lookup-etfs', {
+      method: 'POST',
+      body: JSON.stringify({ tickers }),
+    }),
 };
 
 // Market Data API

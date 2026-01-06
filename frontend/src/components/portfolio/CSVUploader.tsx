@@ -1,22 +1,20 @@
 import { useState, useRef } from 'react';
 
+interface ParsedHolding {
+  ticker: string;
+  valueEur: number;
+  percentage: number;
+  currencyDenomination: string;
+}
+
 interface Props {
-  onPortfolioExtracted: (holdings: Array<{
-    ticker: string;
-    valueEur: number;
-    percentage: number;
-    currencyDenomination: string;
-    region?: string;
-    name?: string;
-    isin?: string;
-  }>, totalValue: number) => void;
+  onPortfolioParsed: (holdings: ParsedHolding[], totalValue: number) => void;
   onError: (error: string) => void;
 }
 
-export default function CSVUploader({ onPortfolioExtracted, onError }: Props) {
+export default function CSVUploader({ onPortfolioParsed, onError }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState<string>('');
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,10 +31,8 @@ export default function CSVUploader({ onPortfolioExtracted, onError }: Props) {
 
     setFileName(file.name);
     setIsProcessing(true);
-    setProcessingStep('Parsing CSV file...');
 
     try {
-      // Step 1: Parse CSV
       const formData = new FormData();
       formData.append('file', file);
 
@@ -51,57 +47,18 @@ export default function CSVUploader({ onPortfolioExtracted, onError }: Props) {
       }
 
       const result = await response.json();
-      const tickers = result.holdings.map((h: Record<string, unknown>) => h.ticker as string);
+      const holdings: ParsedHolding[] = result.holdings.map((h: Record<string, unknown>) => ({
+        ticker: h.ticker as string,
+        valueEur: h.value_eur as number,
+        percentage: h.percentage as number,
+        currencyDenomination: h.currency_denomination as string,
+      }));
 
-      // Step 2: Look up ETF metadata via Claude
-      setProcessingStep('Looking up ETF metadata...');
-
-      let etfMetadata: Record<string, { region: string; name?: string; isin?: string }> = {};
-
-      try {
-        const lookupResponse = await fetch('/api/v1/portfolio/lookup-etfs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tickers }),
-        });
-
-        if (lookupResponse.ok) {
-          const lookupResult = await lookupResponse.json();
-          // Build lookup map
-          for (const etf of lookupResult.etfs) {
-            etfMetadata[etf.ticker] = {
-              region: etf.region,
-              name: etf.name,
-              isin: etf.isin,
-            };
-          }
-        }
-      } catch (lookupErr) {
-        // ETF lookup failed, continue without metadata
-        console.warn('ETF lookup failed, continuing without metadata:', lookupErr);
-      }
-
-      // Step 3: Combine data
-      const holdings = result.holdings.map((h: Record<string, unknown>) => {
-        const ticker = h.ticker as string;
-        const metadata = etfMetadata[ticker];
-        return {
-          ticker,
-          valueEur: h.value_eur as number,
-          percentage: h.percentage as number,
-          currencyDenomination: h.currency_denomination as string,
-          region: metadata?.region,
-          name: metadata?.name,
-          isin: metadata?.isin,
-        };
-      });
-
-      onPortfolioExtracted(holdings, result.total_value_eur);
+      onPortfolioParsed(holdings, result.total_value_eur);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to parse CSV');
     } finally {
       setIsProcessing(false);
-      setProcessingStep('');
     }
   };
 
@@ -158,7 +115,7 @@ export default function CSVUploader({ onPortfolioExtracted, onError }: Props) {
       {isProcessing ? (
         <div className="space-y-3">
           <div className="animate-spin w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full mx-auto"></div>
-          <p className="text-gray-600">{processingStep}</p>
+          <p className="text-gray-600">Parsing CSV...</p>
           {fileName && <p className="text-sm text-gray-500">{fileName}</p>}
         </div>
       ) : (

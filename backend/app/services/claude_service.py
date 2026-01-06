@@ -102,6 +102,11 @@ class ClaudeService:
         )
 
         result = self._extract_json(message.content[0].text)
+
+        # Handle {"results": [...]} format from prompt
+        if isinstance(result, dict) and "results" in result:
+            return result["results"]
+
         return result if isinstance(result, list) else [result]
 
 
