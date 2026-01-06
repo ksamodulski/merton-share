@@ -97,6 +97,7 @@ export const optimizeApi = {
 
   allocate: (data: {
     contribution_amount: number;
+    current_portfolio_value: number;
     gap_analysis: {
       rows: Array<{
         ticker: string;
