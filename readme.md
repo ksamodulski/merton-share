@@ -2,6 +2,14 @@
 
 A web application for optimal asset allocation between stocks and bonds using Merton's portfolio theory with CRRA (Constant Relative Risk Aversion) utility.
 
+## Screenshots
+
+### Market Data
+![Market Data](docs/market_data.png)
+
+### Portfolio Allocation
+![Allocations](docs/allocations.png)
+
 ## Features
 
 - **IBKR CSV Import**: Upload your Interactive Brokers Activity Statement CSV to import portfolio holdings
@@ -15,6 +23,7 @@ A web application for optimal asset allocation between stocks and bonds using Me
 
 ## Documentation
 
+- [Methodology](docs/methodology.md) - Expected returns estimation, optimization math, uncertainty handling
 - [Business Requirements](docs/business_requirements.md) - Detailed functional and non-functional requirements
 - [Architecture](docs/architecture.md) - System design, data flows, and component details
 
@@ -122,7 +131,7 @@ Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Yo
 Fetch current market data via Claude:
 - Valuations (CAPE, Forward P/E) by region
 - Volatility estimates
-- Correlation matrix (with warning if using defaults)
+- Correlation matrix (10-year historical defaults)
 - Institutional views (overweight/neutral/underweight)
 
 ### Step 5: Results
@@ -242,7 +251,7 @@ The optimizer enforces these constraints:
 
 **Risk-Free Rate:** The optimizer uses a default risk-free rate (2.5%) for Sharpe ratio calculations. The bonds/risky split uses the `1/γ` heuristic which doesn't directly use the risk-free rate.
 
-**Correlation Matrix:** If Claude doesn't return correlations, realistic defaults are used (e.g., US-Europe: 0.85, Japan-US: 0.65, Gold-Equities: ~0.05-0.15). A warning is displayed when using defaults.
+**Correlation Matrix:** Uses 10-year historical rolling correlations (e.g., US-Europe: 0.85, Japan-US: 0.65, Gold-Equities: ~0.05-0.15). These defaults are more stable and reliable than real-time estimates.
 
 ## License
 
