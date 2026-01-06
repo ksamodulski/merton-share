@@ -5,10 +5,18 @@ A web application for optimal asset allocation between stocks and bonds using Me
 ## Features
 
 - **IBKR CSV Import**: Upload your Interactive Brokers Activity Statement CSV to import portfolio holdings
+- **AI-Powered ETF Identification**: Claude identifies region, name, ISIN, and TER for each ticker
 - **CRRA Risk Survey**: Interactive questionnaire to determine your risk aversion coefficient
-- **AI-Powered Market Data**: Claude gathers current valuations, volatility, and institutional views
-- **Merton Optimization**: Calculate optimal stock/bond allocation based on your risk profile
+- **AI-Powered Market Data**: Claude gathers current valuations, volatility, correlations, and institutional views
+- **Merton Optimization**: Calculate optimal regional weights using scipy SLSQP solver
+- **Gap Analysis**: Compare current allocation vs optimal with priority signals
 - **Contribution Calculator**: See recommended allocation for new investment contributions
+- **Portfolio Summary**: View current vs target risky/bonds split with recommendations
+
+## Documentation
+
+- [Business Requirements](docs/business_requirements.md) - Detailed functional and non-functional requirements
+- [Architecture](docs/architecture.md) - System design, data flows, and component details
 
 ## Tech Stack
 
@@ -16,6 +24,7 @@ A web application for optimal asset allocation between stocks and bonds using Me
 - Python 3.10+
 - FastAPI
 - Pydantic
+- scipy (SLSQP optimizer)
 - Anthropic Claude API
 
 **Frontend:**
@@ -30,20 +39,25 @@ A web application for optimal asset allocation between stocks and bonds using Me
 merton-share/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/       # API endpoints
+│   │   ├── api/routes/       # API endpoints (portfolio, crra, optimize, market-data)
 │   │   ├── core/             # Business logic (merton_share, crra_survey)
 │   │   ├── models/           # Pydantic models
 │   │   ├── prompts/          # Configurable Claude prompts
 │   │   └── services/         # Claude API service
+│   ├── tests/                # pytest tests
 │   ├── main.py
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── components/       # Reusable components
-│   │   ├── pages/            # Page components
+│   │   ├── components/       # Reusable components (CSVUploader, CRRA survey)
+│   │   ├── pages/            # Page components (5-step workflow)
+│   │   ├── services/         # API client
 │   │   ├── store/            # Zustand state management
 │   │   └── types/            # TypeScript types
 │   └── package.json
+├── docs/
+│   ├── architecture.md       # System architecture
+│   └── business_requirements.md
 └── readme.md
 ```
 
@@ -83,13 +97,38 @@ npm run dev
 
 The app will be available at `http://localhost:5173`
 
-## How to Use
+## Workflow
 
-1. **Bonds Entry**: Enter your Polish inflation-linked bond holdings (optional)
-2. **Portfolio Import**: Upload your IBKR Activity Statement CSV or manually enter ETF holdings
-3. **Risk Profile**: Complete the CRRA survey to determine your risk tolerance
-4. **Market Data**: Fetch current market valuations and institutional views via Claude
-5. **Results**: View your optimal allocation and contribution recommendations
+The application guides you through a 5-step workflow:
+
+### Step 1: Bonds Entry
+Enter your Polish inflation-linked bond holdings (optional). These are treated as risk-free assets in the optimization.
+
+### Step 2: Portfolio Import
+Three-phase process:
+1. **Import**: Upload IBKR CSV or manually enter holdings
+2. **Identify**: Click "Identify ETF Details" to have Claude recognize each ticker
+3. **Review**: Verify regions (US, Europe, Japan, EM, Gold) with dropdown overrides
+
+### Step 3: Risk Profile
+Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Your CRRA determines:
+- Optimal risky/safe split: risky allocation = 1/γ
+- How aggressive/conservative the optimization will be
+
+### Step 4: Market Data
+Fetch current market data via Claude:
+- Valuations (CAPE, Forward P/E) by region
+- Volatility estimates
+- Correlation matrix (with warning if using defaults)
+- Institutional views (overweight/neutral/underweight)
+
+### Step 5: Results
+View your personalized results:
+- **Portfolio Summary**: Total value, current vs target risky/bonds split
+- **Optimal Weights**: Target allocation by region
+- **Gap Analysis**: Current vs target with priority signals
+- **Contribution Allocation**: Enter amount to see buy recommendations
+- **Post-Allocation Preview**: How all positions look after contribution
 
 ## IBKR CSV Export
 
@@ -105,9 +144,12 @@ The app parses the "Open Positions" section of the Activity Statement.
 
 ## Customizing Prompts
 
-The Claude prompt for gathering market data can be customized without touching code:
+Claude prompts are stored in configurable text files:
 
-Edit `backend/app/prompts/market_data.txt` to modify what data Claude collects and how it formats the response.
+- `backend/app/prompts/market_data.txt` - Market data gathering prompt
+- `backend/app/prompts/etf_lookup.txt` - ETF identification prompt
+
+Edit these to modify what data Claude collects and how it formats responses.
 
 ## Running Tests
 
@@ -119,23 +161,34 @@ pytest tests/ -v
 
 ## Theoretical Background
 
-The optimizer implements Merton's optimal portfolio selection model:
+The optimizer implements Merton's optimal portfolio selection model with CRRA utility:
 
+**Utility Function:**
+```
+U(W) = W^(1-γ) / (1-γ)    for γ ≠ 1
+```
+
+**Optimization Objective:**
+```
+max E[U] ≈ max [μ_p - (γ/2)σ_p²]
+```
+
+Where:
+- **μ_p** = portfolio expected return
+- **σ_p** = portfolio volatility
+- **γ** = coefficient of relative risk aversion (CRRA)
+
+**Optimal Risky Asset Fraction (single asset case):**
 ```
 α* = (μ - r) / (γσ²)
 ```
 
-Where:
-- **α*** = optimal fraction in risky assets
-- **μ** = expected return of risky portfolio
-- **r** = risk-free rate
-- **γ** = coefficient of relative risk aversion (CRRA)
-- **σ²** = variance of risky portfolio
-
-For multiple assets:
+**Multi-Asset Case:**
 ```
 α* = (1/γ) × Σ⁻¹(μ - r·1)
 ```
+
+Where Σ is the covariance matrix.
 
 ## ETF Constraints
 
@@ -144,6 +197,31 @@ The app validates ETF holdings against these requirements:
 - EUR-denominated
 - UCITS-compliant
 - TER < 0.50%
+
+## Supported Regions
+
+| Region | Description | Examples |
+|--------|-------------|----------|
+| US | S&P 500, NASDAQ, US total market | CSPX, VUAA |
+| Europe | MSCI Europe, Stoxx 600 | MEUD, SXR1 |
+| Japan | MSCI Japan, Nikkei, TOPIX | IJPA |
+| EM | MSCI Emerging Markets | IEMA |
+| Gold | Gold ETFs, precious metals | 4GLD |
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/portfolio/parse-csv` | POST | Parse IBKR CSV |
+| `/api/v1/portfolio/lookup-etfs` | POST | Identify ETF metadata |
+| `/api/v1/crra/calculate` | POST | Calculate CRRA from survey |
+| `/api/v1/crra/interpret` | POST | Get profile for CRRA value |
+| `/api/v1/market-data/gather` | POST | Fetch market data |
+| `/api/v1/optimize` | POST | Run optimization |
+| `/api/v1/optimize/gap-analysis` | POST | Get gap analysis |
+| `/api/v1/optimize/allocate` | POST | Allocate contribution |
+
+Full API documentation at `/docs` when backend is running.
 
 ## License
 
