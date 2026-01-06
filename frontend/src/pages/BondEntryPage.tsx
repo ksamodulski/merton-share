@@ -38,6 +38,11 @@ export default function BondEntryPage() {
         </p>
       </div>
 
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+        <strong>Note:</strong> Polish inflation-linked bonds are treated as risk-free assets in the optimization.
+        While they carry minor sovereign and liquidity risk, this simplification is appropriate for portfolio allocation purposes.
+      </div>
+
       <form onSubmit={handleSubmit} className="card space-y-6">
         <div>
           <label className="label">Amount (PLN)</label>

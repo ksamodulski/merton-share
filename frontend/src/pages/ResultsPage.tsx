@@ -292,7 +292,10 @@ export default function ResultsPage() {
             const currentBondsPct = totalPortfolio > 0 ? (bondsEur / totalPortfolio) * 100 : 0;
             const currentRiskyPct = totalPortfolio > 0 ? (etfValue / totalPortfolio) * 100 : 0;
 
-            // Target from CRRA: risky = 1/γ, bonds = 1 - 1/γ
+            // Target bonds/risky split using 1/γ heuristic.
+            // Note: This is a common financial planning approximation, not the full Merton formula
+            // α* = (μ-r)/(γσ²). The 1/γ rule assumes a Sharpe ratio of ~1 for risky assets.
+            // We use this because Polish bonds don't have directly comparable expected returns.
             const targetRiskyPct = crra ? Math.min(100, (1 / crra) * 100) : 50;
             const targetBondsPct = 100 - targetRiskyPct;
 

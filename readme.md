@@ -104,6 +104,8 @@ The application guides you through a 5-step workflow:
 ### Step 1: Bonds Entry
 Enter your Polish inflation-linked bond holdings (optional). These are treated as risk-free assets in the optimization.
 
+> **Note:** Polish inflation-linked bonds carry minor sovereign and liquidity risk but are treated as risk-free for optimization purposes. This simplification is acceptable for most retail portfolios.
+
 ### Step 2: Portfolio Import
 Three-phase process:
 1. **Import**: Upload IBKR CSV or manually enter holdings
@@ -111,9 +113,10 @@ Three-phase process:
 3. **Review**: Verify regions (US, Europe, Japan, EM, Gold) with dropdown overrides
 
 ### Step 3: Risk Profile
-Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Your CRRA determines:
-- Optimal risky/safe split: risky allocation = 1/γ
-- How aggressive/conservative the optimization will be
+Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Your CRRA (γ) is used in:
+- **Within-risky optimization**: Full Merton CRRA utility maximization across regions
+- **Bonds/risky target**: Uses `1/γ` heuristic (a common financial planning approximation)
+- Higher γ → more conservative allocation
 
 ### Step 4: Market Data
 Fetch current market data via Claude:
@@ -208,6 +211,8 @@ The app validates ETF holdings against these requirements:
 | EM | MSCI Emerging Markets | IEMA |
 | Gold | Gold ETFs, precious metals | 4GLD |
 
+> **Note on Gold:** Gold is included primarily for diversification benefits (low correlation with equities) rather than expected returns. Its expected return is estimated by Claude based on historical trends and market conditions.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -222,6 +227,22 @@ The app validates ETF holdings against these requirements:
 | `/api/v1/optimize/allocate` | POST | Allocate contribution |
 
 Full API documentation at `/docs` when backend is running.
+
+## Parameter Bounds
+
+The optimizer enforces these constraints:
+
+| Parameter | Range | Enforcement |
+|-----------|-------|-------------|
+| CRRA (γ) | 1.0 - 10.0 | UI slider limits |
+| Asset weights | 0% - 50% | Optimizer constraint (prevents concentration) |
+| Total allocation | 100% | Sum constraint (no leverage or shorting) |
+
+## Technical Notes
+
+**Risk-Free Rate:** The optimizer uses a default risk-free rate (2.5%) for Sharpe ratio calculations. The bonds/risky split uses the `1/γ` heuristic which doesn't directly use the risk-free rate.
+
+**Correlation Matrix:** If Claude doesn't return correlations, realistic defaults are used (e.g., US-Europe: 0.85, Japan-US: 0.65, Gold-Equities: ~0.05-0.15). A warning is displayed when using defaults.
 
 ## License
 
