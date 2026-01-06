@@ -63,12 +63,15 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Create .env file with your API key
-echo "ANTHROPIC_API_KEY=your-api-key-here" > .env
+# Copy the example env file and add your API key
+cp .env.example .env
+# Edit .env and add your Anthropic API key
 
 # Run the server
-uvicorn main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
+
+API documentation is available at `http://localhost:8000/docs` (Swagger UI).
 
 ### Frontend Setup
 
@@ -105,6 +108,14 @@ The app parses the "Open Positions" section of the Activity Statement.
 The Claude prompt for gathering market data can be customized without touching code:
 
 Edit `backend/app/prompts/market_data.txt` to modify what data Claude collects and how it formats the response.
+
+## Running Tests
+
+```bash
+cd backend
+source venv/bin/activate
+pytest tests/ -v
+```
 
 ## Theoretical Background
 

@@ -51,7 +51,7 @@ export default function PortfolioEntryPage() {
       name?: string;
       isin?: string;
     }>,
-    totalValue: number
+    _totalValue: number
   ) => {
     const newHoldings: ETFHolding[] = extractedHoldings.map((h) => ({
       ticker: h.ticker,

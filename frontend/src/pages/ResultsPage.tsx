@@ -16,7 +16,7 @@ const DEFAULT_CORRELATIONS: Record<string, Record<string, number>> = {
 export default function ResultsPage() {
   const {
     portfolio,
-    bondPosition,
+    // bondPosition - reserved for future bond allocation display
     crra,
     marketData,
     contributionAmount,

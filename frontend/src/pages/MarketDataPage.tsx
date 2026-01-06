@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { marketDataApi } from '../services/api';
 import type { MarketData } from '../types';
 
 export default function MarketDataPage() {
