@@ -1,0 +1,88 @@
+Today is {today}. Provide current market data for portfolio optimization.
+
+I need the following data. Use your most recent knowledge. If you're uncertain about exact current values, provide your best estimate based on recent trends and note the uncertainty.
+
+Required data:
+
+1. VALUATIONS (CAPE, Forward P/E, Dividend Yield):
+   - US (S&P 500)
+   - Europe (Stoxx 600)
+   - Japan (Topix/Nikkei)
+   - Emerging Markets (MSCI EM)
+
+2. VOLATILITY (use annualized values as decimals, e.g., 0.16 for 16%):
+   - US equities
+   - Europe equities
+   - Japan equities
+   - EM equities
+   - Gold
+
+3. EXPECTED RETURNS (annualized, next 10 years, as decimals):
+   Consider CAPE-based earnings yield, dividend yield, GDP growth expectations, and current valuations.
+   - US Equities
+   - Europe Equities
+   - Japan Equities
+   - EM Equities
+   - Gold
+
+4. CORRELATIONS (between asset classes):
+   Provide a 5x5 correlation matrix for: US, Europe, Japan, EM, Gold
+   Use realistic values based on historical correlations.
+
+5. RATES:
+   - ECB deposit rate or German Bund yield (EUR risk-free rate)
+   - Current EUR/PLN exchange rate
+
+6. INSTITUTIONAL VIEWS (general consensus from major firms like BlackRock, Vanguard, Goldman):
+   - US Equities: overweight/neutral/underweight
+   - Europe Equities: overweight/neutral/underweight
+   - Japan Equities: overweight/neutral/underweight
+   - EM Equities: overweight/neutral/underweight
+   - Gold: overweight/neutral/underweight
+
+Return ONLY valid JSON:
+{{
+  "valuations": [
+    {{"region": "US", "cape": 35.0, "forward_pe": 21.5, "dividend_yield": 0.013, "source": "estimate", "date": "{today}"}},
+    {{"region": "Europe", "cape": 15.0, "forward_pe": 13.0, "dividend_yield": 0.028, "source": "estimate", "date": "{today}"}},
+    {{"region": "Japan", "cape": 22.0, "forward_pe": 15.0, "dividend_yield": 0.020, "source": "estimate", "date": "{today}"}},
+    {{"region": "EM", "cape": 12.0, "forward_pe": 12.0, "dividend_yield": 0.025, "source": "estimate", "date": "{today}"}}
+  ],
+  "volatility": [
+    {{"asset": "US", "implied_vol": 0.16, "realized_vol_1y": 0.15, "source": "VIX-based"}},
+    {{"asset": "Europe", "implied_vol": 0.18, "realized_vol_1y": 0.17, "source": "VSTOXX-based"}},
+    {{"asset": "Japan", "implied_vol": 0.20, "realized_vol_1y": 0.19, "source": "estimate"}},
+    {{"asset": "EM", "implied_vol": 0.22, "realized_vol_1y": 0.21, "source": "estimate"}},
+    {{"asset": "Gold", "implied_vol": 0.15, "realized_vol_1y": 0.14, "source": "GVZ-based"}}
+  ],
+  "expected_returns": [
+    {{"region": "US", "return": 0.05, "rationale": "High CAPE limits long-term returns"}},
+    {{"region": "Europe", "return": 0.07, "rationale": "Attractive valuations support returns"}},
+    {{"region": "Japan", "return": 0.06, "rationale": "Corporate reforms improving shareholder returns"}},
+    {{"region": "EM", "return": 0.08, "rationale": "Higher growth potential despite volatility"}},
+    {{"region": "Gold", "return": 0.04, "rationale": "Long-term real return expectation"}}
+  ],
+  "correlations": {{
+    "assets": ["US", "Europe", "Japan", "EM", "Gold"],
+    "matrix": [
+      [1.00, 0.85, 0.65, 0.70, 0.05],
+      [0.85, 1.00, 0.60, 0.65, 0.10],
+      [0.65, 0.60, 1.00, 0.55, 0.05],
+      [0.70, 0.65, 0.55, 1.00, 0.15],
+      [0.05, 0.10, 0.05, 0.15, 1.00]
+    ]
+  }},
+  "institutional_views": [
+    {{"region": "US", "stance": "neutral", "sources": ["BlackRock", "Vanguard"], "key_drivers": ["High valuations", "AI momentum"]}},
+    {{"region": "Europe", "stance": "overweight", "sources": ["Goldman Sachs"], "key_drivers": ["Attractive valuations"]}},
+    {{"region": "Japan", "stance": "overweight", "sources": ["BlackRock"], "key_drivers": ["Corporate reforms"]}},
+    {{"region": "EM", "stance": "neutral", "sources": ["JPMorgan"], "key_drivers": ["China uncertainty"]}},
+    {{"region": "Gold", "stance": "neutral", "sources": ["Various"], "key_drivers": ["Inflation hedge"]}}
+  ],
+  "risk_free_rate": 0.025,
+  "eur_pln_rate": 4.30,
+  "data_quality": "estimates based on knowledge cutoff",
+  "sources": ["Claude knowledge base", "Recent market analysis"]
+}}
+
+Be realistic with values - they should reflect actual recent market conditions.

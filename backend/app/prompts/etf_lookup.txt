@@ -1,0 +1,40 @@
+Identify the following ETF tickers and provide details for each.
+
+Tickers to identify:
+{tickers}
+
+For each ticker, determine:
+1. **region**: The primary geographic exposure. Must be one of: US, Europe, Japan, EM, Gold
+   - US: S&P 500, NASDAQ, US total market, or >50% US exposure
+   - Europe: European stocks (Stoxx 600, MSCI Europe, individual European countries)
+   - Japan: Japanese stocks (Nikkei, TOPIX, MSCI Japan)
+   - EM: Emerging Markets (MSCI EM, individual EM countries)
+   - Gold: Gold ETFs, gold miners, precious metals
+   - For global/world ETFs, assign based on largest regional weight (usually US)
+
+2. **name**: Full ETF name
+
+3. **isin**: ISIN code if known (format: 2 letters + 10 alphanumeric)
+
+4. **ter**: Total Expense Ratio as decimal (e.g., 0.0020 for 0.20%)
+
+5. **is_accumulating**: true if accumulating (reinvests dividends), false if distributing, null if unknown
+
+6. **note**: Optional note for special cases (e.g., "Global ETF - 60% US weighted")
+
+Return ONLY valid JSON in this exact format:
+{{
+  "results": [
+    {{
+      "ticker": "EXAMPLE",
+      "region": "US",
+      "name": "Example ETF Name",
+      "isin": "IE00XXXXXXXXXX",
+      "ter": 0.0020,
+      "is_accumulating": true,
+      "note": null
+    }}
+  ]
+}}
+
+If you cannot identify a ticker, still include it with region "Unknown" and null for other fields.
