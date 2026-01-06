@@ -132,9 +132,9 @@ export default function MarketDataPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">Region</th>
-                      <th className="px-4 py-2 text-right">CAPE</th>
-                      <th className="px-4 py-2 text-right">Fwd P/E</th>
-                      <th className="px-4 py-2 text-right">Div Yield</th>
+                      <th className="px-4 py-2 text-right cursor-help" title="Cyclically Adjusted P/E (Shiller P/E). Price ÷ 10-year avg earnings. Lower = cheaper.">CAPE</th>
+                      <th className="px-4 py-2 text-right cursor-help" title="Forward P/E. Price ÷ expected next-12-month earnings. Lower = cheaper.">Fwd P/E</th>
+                      <th className="px-4 py-2 text-right cursor-help" title="Dividend Yield. Annual dividends ÷ price. Higher = more income.">Div Yield</th>
                       <th className="px-4 py-2 text-left">Source</th>
                     </tr>
                   </thead>
@@ -163,8 +163,8 @@ export default function MarketDataPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">Asset</th>
-                      <th className="px-4 py-2 text-right">Implied Vol</th>
-                      <th className="px-4 py-2 text-right">1Y Realized</th>
+                      <th className="px-4 py-2 text-right cursor-help" title="Market's expected future volatility from options prices (VIX, VSTOXX). Forward-looking.">Implied Vol</th>
+                      <th className="px-4 py-2 text-right cursor-help" title="Actual historical volatility measured over the past year. Backward-looking.">1Y Realized</th>
                       <th className="px-4 py-2 text-left">Source</th>
                     </tr>
                   </thead>
@@ -233,11 +233,7 @@ export default function MarketDataPage() {
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-3">
                 Correlations
-                {!marketData.correlations && (
-                  <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded">
-                    Using defaults
-                  </span>
-                )}
+                <span className="ml-2 text-xs text-gray-500">(10-year historical)</span>
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

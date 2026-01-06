@@ -44,16 +44,12 @@ Required data:
    - EM Equities
    - Gold (diversifying asset, NOT a safe-haven)
 
-4. CORRELATIONS (between asset classes):
-   Provide a 5x5 correlation matrix for: US, Europe, Japan, EM, Gold
-   Use realistic values based on historical 10-year correlations.
-
-5. RATES:
+4. RATES:
    - ECB deposit rate (search ecb.europa.eu for current rate)
    - German 10-year Bund yield
    - Current EUR/PLN exchange rate
 
-6. INSTITUTIONAL VIEWS (search for recent outlook reports):
+5. INSTITUTIONAL VIEWS (search for recent outlook reports):
    - US Equities: overweight/neutral/underweight
    - Europe Equities: overweight/neutral/underweight
    - Japan Equities: overweight/neutral/underweight
@@ -82,18 +78,6 @@ Return ONLY valid JSON with this EXACT structure:
     {{"region": "EM", "return": 0.08, "rationale": "1/12 CAPE + 2.5% div yield = ~10.8%, adjusted for EM risk", "confidence": "low"}},
     {{"region": "Gold", "return": 0.03, "rationale": "0% real + 2-3% inflation = ~3% nominal", "confidence": "low"}}
   ],
-  "correlations": {{
-    "assets": ["US", "Europe", "Japan", "EM", "Gold"],
-    "matrix": [
-      [1.00, 0.85, 0.65, 0.70, 0.05],
-      [0.85, 1.00, 0.60, 0.65, 0.10],
-      [0.65, 0.60, 1.00, 0.55, 0.05],
-      [0.70, 0.65, 0.55, 1.00, 0.15],
-      [0.05, 0.10, 0.05, 0.15, 1.00]
-    ],
-    "source": "10-year historical correlations",
-    "confidence": "medium"
-  }},
   "institutional_views": [
     {{"region": "US", "stance": "neutral", "sources": ["BlackRock Q1 2025 Outlook"], "key_drivers": ["High valuations offset by AI momentum"], "confidence": "high"}},
     {{"region": "Europe", "stance": "overweight", "sources": ["Goldman Sachs 2025 Outlook"], "key_drivers": ["Attractive valuations"], "confidence": "high"}},
