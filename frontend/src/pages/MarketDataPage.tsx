@@ -2,99 +2,98 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { marketDataApi } from '../services/api';
-
-// Default values from step2 prompt
-const DEFAULT_MARKET_DATA = {
-  valuations: [
-    { region: 'US', cape: 35, forwardPe: 21, dividendYield: 0.013 },
-    { region: 'Europe', cape: 15, forwardPe: 13, dividendYield: 0.028 },
-    { region: 'Japan', cape: 22, forwardPe: 15, dividendYield: 0.020 },
-    { region: 'EM', cape: 12, forwardPe: 12, dividendYield: 0.025 },
-  ],
-  volatility: [
-    { asset: 'US', impliedVol: 0.16, realizedVol1Y: 0.15 },
-    { asset: 'Europe', impliedVol: 0.18, realizedVol1Y: 0.17 },
-    { asset: 'Japan', impliedVol: 0.20, realizedVol1Y: 0.19 },
-    { asset: 'EM', impliedVol: 0.22, realizedVol1Y: 0.21 },
-    { asset: 'Gold', impliedVol: 0.15, realizedVol1Y: 0.14 },
-  ],
-  riskFreeRate: 0.025,
-  eurPlnRate: 4.30,
-};
+import type { MarketData } from '../types';
 
 export default function MarketDataPage() {
   const navigate = useNavigate();
-  const { marketData, setMarketData, markStepComplete, setMarketDataLoading, marketDataLoading } = useAppStore();
-  const [useDefaults, setUseDefaults] = useState(true);
+  const {
+    marketData,
+    setMarketData,
+    markStepComplete,
+    setMarketDataLoading,
+    marketDataLoading,
+  } = useAppStore();
   const [error, setError] = useState<string | null>(null);
 
   const handleFetchMarketData = async () => {
     setError(null);
     setMarketDataLoading(true);
-    try {
-      // Try to fetch from API
-      await marketDataApi.gather(true);
-    } catch (err) {
-      // API not implemented yet, use defaults
-      setError('Live market data not available yet. Using default values.');
-    }
-    setMarketDataLoading(false);
-  };
 
-  const handleUseDefaults = () => {
-    setMarketData({
-      valuations: DEFAULT_MARKET_DATA.valuations.map((v) => ({
-        region: v.region,
-        cape: v.cape,
-        forwardPe: v.forwardPe,
-        dividendYield: v.dividendYield,
-        source: 'Default values',
-        date: new Date().toISOString().split('T')[0],
-      })),
-      volatility: DEFAULT_MARKET_DATA.volatility.map((v) => ({
-        asset: v.asset,
-        impliedVol: v.impliedVol,
-        realizedVol1Y: v.realizedVol1Y,
-        source: 'Default values',
-      })),
-      institutionalViews: [
-        { region: 'US', stance: 'neutral', sources: ['Default'], keyDrivers: [] },
-        { region: 'Europe', stance: 'overweight', sources: ['Default'], keyDrivers: [] },
-        { region: 'Japan', stance: 'overweight', sources: ['Default'], keyDrivers: [] },
-        { region: 'EM', stance: 'neutral', sources: ['Default'], keyDrivers: [] },
-        { region: 'Gold', stance: 'neutral', sources: ['Default'], keyDrivers: [] },
-      ],
-      riskFreeRate: DEFAULT_MARKET_DATA.riskFreeRate,
-      eurPlnRate: DEFAULT_MARKET_DATA.eurPlnRate,
-      fetchedAt: new Date().toISOString(),
-      sources: ['Default values from step2 prompt'],
-    });
-    markStepComplete('market-data');
+    try {
+      const response = await fetch('/api/v1/market-data/gather', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force_refresh: true }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to fetch market data');
+      }
+
+      const data = await response.json();
+
+      // Convert to frontend format
+      const marketData: MarketData = {
+        valuations: data.valuations.map((v: Record<string, unknown>) => ({
+          region: v.region,
+          cape: v.cape,
+          forwardPe: v.forward_pe,
+          dividendYield: v.dividend_yield,
+          source: v.source,
+          date: v.date,
+        })),
+        volatility: data.volatility.map((v: Record<string, unknown>) => ({
+          asset: v.asset,
+          impliedVol: v.implied_vol,
+          realizedVol1Y: v.realized_vol_1y,
+          source: v.source,
+        })),
+        institutionalViews: data.institutional_views.map((v: Record<string, unknown>) => ({
+          region: v.region,
+          stance: v.stance,
+          sources: v.sources,
+          keyDrivers: v.key_drivers,
+        })),
+        expectedReturns: data.expected_returns?.map((r: Record<string, unknown>) => ({
+          region: r.region,
+          return: r.return,
+          rationale: r.rationale,
+        })),
+        correlations: data.correlations ? {
+          assets: data.correlations.assets,
+          matrix: data.correlations.matrix,
+        } : undefined,
+        riskFreeRate: data.risk_free_rate,
+        eurPlnRate: data.eur_pln_rate,
+        fetchedAt: data.fetched_at,
+        sources: data.sources,
+      };
+
+      setMarketData(marketData);
+      markStepComplete('market-data');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch market data');
+    } finally {
+      setMarketDataLoading(false);
+    }
   };
 
   const handleContinue = () => {
     navigate('/results');
   };
 
-  const data = marketData || (useDefaults ? {
-    valuations: DEFAULT_MARKET_DATA.valuations,
-    volatility: DEFAULT_MARKET_DATA.volatility,
-    riskFreeRate: DEFAULT_MARKET_DATA.riskFreeRate,
-    eurPlnRate: DEFAULT_MARKET_DATA.eurPlnRate,
-  } : null);
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">Market Data</h2>
         <p className="mt-1 text-gray-500">
-          Current market valuations, volatility, and institutional views.
-          Live data fetching will be available in Phase 3.
+          Fetch current market valuations, volatility, and institutional views using Claude.
         </p>
       </div>
 
       {error && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {error}
         </div>
       )}
@@ -106,14 +105,25 @@ export default function MarketDataPage() {
             disabled={marketDataLoading}
             className="btn btn-primary"
           >
-            {marketDataLoading ? 'Fetching...' : 'Fetch Live Data'}
-          </button>
-          <button onClick={handleUseDefaults} className="btn btn-secondary">
-            Use Default Values
+            {marketDataLoading ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                Fetching with Claude...
+              </span>
+            ) : (
+              'Fetch Live Data'
+            )}
           </button>
         </div>
 
-        {data && (
+        {marketDataLoading && (
+          <div className="text-center py-8 text-gray-500">
+            <p>Claude is gathering current market data...</p>
+            <p className="text-sm mt-1">This may take a few seconds.</p>
+          </div>
+        )}
+
+        {marketData && !marketDataLoading && (
           <div className="space-y-6">
             {/* Valuations Table */}
             <div>
@@ -126,10 +136,11 @@ export default function MarketDataPage() {
                       <th className="px-4 py-2 text-right">CAPE</th>
                       <th className="px-4 py-2 text-right">Fwd P/E</th>
                       <th className="px-4 py-2 text-right">Div Yield</th>
+                      <th className="px-4 py-2 text-left">Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {data.valuations.map((v) => (
+                    {marketData.valuations.map((v) => (
                       <tr key={v.region}>
                         <td className="px-4 py-2 font-medium">{v.region}</td>
                         <td className="px-4 py-2 text-right">{v.cape ?? '-'}</td>
@@ -137,6 +148,7 @@ export default function MarketDataPage() {
                         <td className="px-4 py-2 text-right">
                           {(v.dividendYield * 100).toFixed(1)}%
                         </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">{v.source}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -154,10 +166,11 @@ export default function MarketDataPage() {
                       <th className="px-4 py-2 text-left">Asset</th>
                       <th className="px-4 py-2 text-right">Implied Vol</th>
                       <th className="px-4 py-2 text-right">1Y Realized</th>
+                      <th className="px-4 py-2 text-left">Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {data.volatility.map((v) => (
+                    {marketData.volatility.map((v) => (
                       <tr key={v.asset}>
                         <td className="px-4 py-2 font-medium">{v.asset}</td>
                         <td className="px-4 py-2 text-right">
@@ -165,6 +178,50 @@ export default function MarketDataPage() {
                         </td>
                         <td className="px-4 py-2 text-right">
                           {v.realizedVol1Y ? `${(v.realizedVol1Y * 100).toFixed(0)}%` : '-'}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">{v.source}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Institutional Views */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Institutional Views</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Region</th>
+                      <th className="px-4 py-2 text-center">Stance</th>
+                      <th className="px-4 py-2 text-left">Sources</th>
+                      <th className="px-4 py-2 text-left">Key Drivers</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {marketData.institutionalViews.map((v) => (
+                      <tr key={v.region}>
+                        <td className="px-4 py-2 font-medium">{v.region}</td>
+                        <td className="px-4 py-2 text-center">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              v.stance === 'overweight'
+                                ? 'bg-green-100 text-green-700'
+                                : v.stance === 'underweight'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {v.stance}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">
+                          {v.sources.join(', ')}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">
+                          {v.keyDrivers.join(', ')}
                         </td>
                       </tr>
                     ))}
@@ -178,13 +235,18 @@ export default function MarketDataPage() {
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="text-sm text-gray-500">Risk-Free Rate</div>
                 <div className="text-xl font-semibold">
-                  {(data.riskFreeRate * 100).toFixed(1)}%
+                  {(marketData.riskFreeRate * 100).toFixed(1)}%
                 </div>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="text-sm text-gray-500">EUR/PLN Rate</div>
-                <div className="text-xl font-semibold">{data.eurPlnRate.toFixed(2)}</div>
+                <div className="text-xl font-semibold">{marketData.eurPlnRate.toFixed(2)}</div>
               </div>
+            </div>
+
+            {/* Data freshness */}
+            <div className="text-xs text-gray-400 text-center">
+              Data fetched: {new Date(marketData.fetchedAt).toLocaleString()}
             </div>
           </div>
         )}

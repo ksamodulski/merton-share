@@ -1,0 +1,14 @@
+﻿Statement,Header,Field Name,Field Value
+Statement,Data,BrokerName,Interactive Brokers Ireland Limited
+Statement,Data,BrokerAddress,
+Statement,Data,Title,Activity Statement
+Statement,Data,Period,"January 2, 2026"
+Statement,Data,WhenGenerated,"2026-01-05, 15:29:17 EST"
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Open Positions,Data,Summary,Stocks,EUR,4GLD,23,1,110.061956522,2531.425,118.22,2719.06,187.635,
+Open Positions,Data,Summary,Stocks,EUR,IEMA,113,1,42.530176991,4805.91,45.555,5147.72,341.809999,
+Open Positions,Data,Summary,Stocks,EUR,IJPA,63,1,58.728571429,3699.9,59.1,3723.3,23.4,
+Open Positions,Data,Summary,Stocks,EUR,MEUD,15,1,265.1,3976.5,287.35,4310.25,333.75,
+Open Positions,Data,Summary,Stocks,EUR,SPYF,7,1,92.068571429,644.48,96.95,678.65,34.17,
+Open Positions,Data,Summary,Stocks,EUR,SXR1,7,1,188.728571429,1321.1,187.64,1313.48,-7.62,
+Open Positions,Total,,Stocks,EUR,,,,,16979.315,,17892.46,913.144999,

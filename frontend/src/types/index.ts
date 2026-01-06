@@ -3,6 +3,7 @@ export interface ETFHolding {
   ticker: string;
   isin?: string;
   name?: string;
+  region?: string;  // US, Europe, Japan, EM, Gold
   valueEur: number;
   percentage: number;
   isAccumulating: boolean;
@@ -10,6 +11,17 @@ export interface ETFHolding {
   isUcits: boolean;
   ter: number;
   constraintViolations?: string[];
+}
+
+// ETF Metadata from Claude lookup
+export interface ETFMetadata {
+  ticker: string;
+  region: string;
+  name?: string;
+  isin?: string;
+  ter?: number;
+  isAccumulating?: boolean;
+  description?: string;
 }
 
 export interface BondPosition {
@@ -70,10 +82,23 @@ export interface InstitutionalView {
   keyDrivers: string[];
 }
 
+export interface ExpectedReturn {
+  region: string;
+  return: number;
+  rationale: string;
+}
+
+export interface CorrelationMatrix {
+  assets: string[];
+  matrix: number[][];
+}
+
 export interface MarketData {
   valuations: Valuation[];
   volatility: Volatility[];
   institutionalViews: InstitutionalView[];
+  expectedReturns?: ExpectedReturn[];
+  correlations?: CorrelationMatrix;
   riskFreeRate: number;
   eurPlnRate: number;
   fetchedAt: string;
@@ -109,6 +134,23 @@ export interface AllocationRecommendation {
   amountEur: number;
   percentageOfContribution: number;
   rationale: string;
+}
+
+// Rebalancing types
+export interface SellRecommendation {
+  ticker: string;
+  currentPct: number;
+  targetPct: number;
+  excessPct: number;
+  rationale: string;
+}
+
+export interface RebalanceCheck {
+  isRebalanceRecommended: boolean;
+  maxDeviation: number;
+  overweightPositions: SellRecommendation[];
+  underweightPositions: string[];
+  taxNote: string;
 }
 
 // Workflow step type

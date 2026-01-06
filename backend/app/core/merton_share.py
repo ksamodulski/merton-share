@@ -1,20 +1,21 @@
 """
 Portfolio Optimizer using Merton's optimal portfolio allocation.
 
-This module implements the Merton model for portfolio optimization with
-CRRA (Constant Relative Risk Aversion) utility function.
+This module implements mean-variance optimization with CRRA (Constant Relative
+Risk Aversion) utility function. All assets are treated as risky assets.
 """
 
 import numpy as np
+from scipy.optimize import minimize
 from typing import Dict, List, Union
 
 
 class PortfolioOptimizer:
     """
-    Optimizes portfolio allocation using Merton's optimal portfolio theory.
+    Optimizes portfolio allocation using mean-variance optimization with CRRA utility.
 
-    The optimizer identifies the lowest-volatility asset as the "bond" (risk-free asset)
-    and calculates optimal weights for risky assets based on the CRRA parameter.
+    All provided assets are treated as risky assets. The optimizer finds weights
+    that maximize CRRA utility: E[U(W)] where U(W) = W^(1-γ)/(1-γ) for γ ≠ 1.
     """
 
     def __init__(
@@ -24,6 +25,7 @@ class PortfolioOptimizer:
         volatilities: List[float],
         correlation_matrix: Union[List[List[float]], np.ndarray],
         crra: float = 3.0,
+        risk_free_rate: float = 0.025,
     ):
         """
         Initialize the portfolio optimizer.
@@ -34,6 +36,7 @@ class PortfolioOptimizer:
             volatilities: Annual volatility (std dev) for each asset (as decimals)
             correlation_matrix: Correlation matrix between assets
             crra: Coefficient of Relative Risk Aversion (1-10 typical range)
+            risk_free_rate: Risk-free rate for Sharpe ratio calculation
 
         Raises:
             ValueError: If inputs are invalid or inconsistent
@@ -42,6 +45,7 @@ class PortfolioOptimizer:
         self.expected_returns = np.array(expected_returns)
         self.volatilities = np.array(volatilities)
         self.correlation_matrix = np.array(correlation_matrix)
+        self.risk_free_rate = risk_free_rate
 
         if crra <= 0:
             raise ValueError("CRRA parameter must be positive")
@@ -49,21 +53,11 @@ class PortfolioOptimizer:
 
         self._validate_inputs()
 
-        # Identify bond as lowest volatility asset
-        self.bond_index = int(np.argmin(volatilities))
-        self.risk_free_rate = expected_returns[self.bond_index]
-
-        # Separate risky assets
-        self.risky_indices = [i for i in range(len(asset_names)) if i != self.bond_index]
-        self.risky_returns = self.expected_returns[self.risky_indices]
-        self.risky_vols = self.volatilities[self.risky_indices]
-        self.risky_corr = self.correlation_matrix[
-            np.ix_(self.risky_indices, self.risky_indices)
-        ]
-
-        # Calculate covariance matrix for risky assets
-        self.risky_cov = (
-            np.diag(self.risky_vols) @ self.risky_corr @ np.diag(self.risky_vols)
+        # Calculate covariance matrix
+        self.cov_matrix = (
+            np.diag(self.volatilities)
+            @ self.correlation_matrix
+            @ np.diag(self.volatilities)
         )
 
     def _validate_inputs(self) -> None:
@@ -89,43 +83,66 @@ class PortfolioOptimizer:
         if not np.all(np.linalg.eigvals(self.correlation_matrix) > 0):
             raise ValueError("Correlation matrix is not positive definite")
 
+    def _crra_utility(self, weights: np.ndarray) -> float:
+        """
+        Calculate negative CRRA utility for optimization (minimize negative = maximize).
+
+        For CRRA utility: U(W) = W^(1-γ)/(1-γ) for γ ≠ 1, ln(W) for γ = 1
+
+        We use a quadratic approximation: E[U] ≈ μ - (γ/2)σ² where
+        μ is portfolio return and σ is portfolio volatility.
+        """
+        portfolio_return = np.sum(weights * self.expected_returns)
+        portfolio_var = weights.T @ self.cov_matrix @ weights
+
+        # CRRA utility approximation: penalize variance based on risk aversion
+        utility = portfolio_return - (self.crra / 2) * portfolio_var
+
+        return -utility  # Negative because we minimize
+
     def calculate_optimal_weights(self) -> np.ndarray:
         """
-        Calculate optimal portfolio weights using Merton's formula.
+        Calculate optimal portfolio weights using constrained optimization.
+
+        Maximizes CRRA utility subject to:
+        - Weights sum to 1
+        - All weights >= 0 (long only)
+        - Each weight <= 0.50 (max 50% in any single asset for diversification)
 
         Returns:
             Array of optimal weights for each asset (sums to 1.0)
         """
-        # Calculate excess returns for risky assets
-        excess_returns = self.risky_returns - self.risk_free_rate
+        n = len(self.asset_names)
 
-        # Calculate optimal weights for risky assets
-        inv_cov = np.linalg.inv(self.risky_cov)
+        # Initial guess: equal weights
+        x0 = np.ones(n) / n
 
-        # Step 1: Calculate initial proportions between risky assets
-        risky_proportions = inv_cov @ excess_returns
+        # Constraints
+        constraints = [
+            {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},  # Weights sum to 1
+        ]
 
-        # Enforce non-negative constraints
-        risky_proportions = np.maximum(risky_proportions, 0)
+        # Bounds: 0% to 50% for each asset (prevents extreme concentration)
+        bounds = [(0.0, 0.50) for _ in range(n)]
 
-        # Normalize if sum is positive
-        sum_proportions = np.sum(risky_proportions)
-        if sum_proportions > 0:
-            normalized_risky_proportions = risky_proportions / sum_proportions
-        else:
-            normalized_risky_proportions = np.zeros_like(risky_proportions)
+        # Optimize
+        result = minimize(
+            self._crra_utility,
+            x0,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+            options={"maxiter": 1000, "ftol": 1e-9},
+        )
 
-        # Step 2: Calculate total allocation to risky assets based on CRRA
-        scaling_factor = 1 / self.crra
-        total_risky_allocation = min(1, scaling_factor)
+        if not result.success:
+            # Fall back to equal weights if optimization fails
+            return np.ones(n) / n
 
-        # Step 3: Create final weights array
-        weights = np.zeros(len(self.asset_names))
-        for i, idx in enumerate(self.risky_indices):
-            weights[idx] = normalized_risky_proportions[i] * total_risky_allocation
-
-        # Remainder goes to bonds
-        weights[self.bond_index] = 1 - total_risky_allocation
+        weights = result.x
+        # Ensure weights are non-negative and sum to 1
+        weights = np.maximum(weights, 0)
+        weights = weights / np.sum(weights)
 
         return weights
 
@@ -140,15 +157,8 @@ class PortfolioOptimizer:
             Dictionary with return, volatility, sharpe_ratio, crra_utility, risk_contribution
         """
         portfolio_return = float(np.sum(weights * self.expected_returns))
-        portfolio_vol = float(
-            np.sqrt(
-                weights.T
-                @ np.diag(self.volatilities)
-                @ self.correlation_matrix
-                @ np.diag(self.volatilities)
-                @ weights
-            )
-        )
+        portfolio_var = float(weights.T @ self.cov_matrix @ weights)
+        portfolio_vol = float(np.sqrt(portfolio_var))
 
         sharpe_ratio = (
             (portfolio_return - self.risk_free_rate) / portfolio_vol
@@ -156,14 +166,8 @@ class PortfolioOptimizer:
             else 0
         )
 
-        if np.isclose(self.crra, 1.0):
-            crra_utility = np.log(1 + portfolio_return) - (
-                portfolio_vol * portfolio_vol / 2
-            )
-        else:
-            crra_utility = (
-                np.power(1 + portfolio_return, 1 - self.crra) / (1 - self.crra)
-            ) - (portfolio_vol * portfolio_vol / 2)
+        # CRRA utility approximation
+        crra_utility = portfolio_return - (self.crra / 2) * portfolio_var
 
         return {
             "return": portfolio_return * 100,  # As percentage
@@ -179,13 +183,8 @@ class PortfolioOptimizer:
         self, weights: np.ndarray, portfolio_vol: float
     ) -> Dict[str, float]:
         """Calculate risk contribution of each asset."""
-        cov_matrix = (
-            np.diag(self.volatilities)
-            @ self.correlation_matrix
-            @ np.diag(self.volatilities)
-        )
         marginal_risk = (
-            (cov_matrix @ weights) / portfolio_vol
+            (self.cov_matrix @ weights) / portfolio_vol
             if portfolio_vol > 0
             else np.zeros_like(weights)
         )

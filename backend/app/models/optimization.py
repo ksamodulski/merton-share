@@ -118,6 +118,7 @@ class AllocationRequest(BaseModel):
     """Request for allocation recommendation."""
 
     contribution_amount: float = Field(..., gt=0, description="Amount to allocate (EUR)")
+    current_portfolio_value: float = Field(..., gt=0, description="Current portfolio value (EUR)")
     gap_analysis: GapAnalysisResponse
     min_allocation: float = Field(500.0, description="Minimum allocation per ETF (EUR)")
 
@@ -128,3 +129,34 @@ class AllocationResponse(BaseModel):
     total_contribution: float
     recommendations: List[AllocationRecommendation]
     unallocated: float = Field(0.0, description="Amount not allocated")
+
+
+class RebalanceCheckRequest(BaseModel):
+    """Request for rebalancing check."""
+
+    current_allocation: Dict[str, float] = Field(..., description="Current allocation by asset (%)")
+    target_allocation: Dict[str, float] = Field(..., description="Target allocation by asset (%)")
+    rebalance_threshold: float = Field(5.0, ge=1.0, le=20.0, description="Threshold for rebalancing (%)")
+
+
+class SellRecommendation(BaseModel):
+    """Recommendation to reduce an overweight position."""
+
+    ticker: str
+    current_pct: float
+    target_pct: float
+    excess_pct: float = Field(..., description="How much overweight (%)")
+    rationale: str
+
+
+class RebalanceResponse(BaseModel):
+    """Response with rebalancing analysis."""
+
+    is_rebalance_recommended: bool = Field(..., description="Whether rebalancing is recommended")
+    max_deviation: float = Field(..., description="Maximum deviation from target (%)")
+    overweight_positions: List[SellRecommendation] = Field(default_factory=list)
+    underweight_positions: List[str] = Field(default_factory=list, description="Underweight tickers")
+    tax_note: str = Field(
+        "Consider tax implications before selling. Quarterly rebalancing is typically sufficient.",
+        description="Tax reminder"
+    )

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import { optimizeApi } from '../services/api';
+import type { RebalanceCheck } from '../types';
 
 export default function ResultsPage() {
   const {
@@ -21,6 +22,7 @@ export default function ResultsPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rebalanceCheck, setRebalanceCheck] = useState<RebalanceCheck | null>(null);
 
   const runOptimization = async () => {
     if (!portfolio || !crra || !marketData) {
@@ -34,41 +36,59 @@ export default function ResultsPage() {
     try {
       // Build optimization request from market data
       const regions = ['US', 'Europe', 'Japan', 'EM', 'Gold'];
-      const assets = regions;
 
-      // Calculate expected returns from CAPE and dividend yield
+      // Use expected returns from Claude if available, otherwise calculate from CAPE
       const expectedReturns = regions.map((region) => {
+        // First try Claude's expected returns
+        const expectedReturn = marketData.expectedReturns?.find((r) => r.region === region);
+        if (expectedReturn) {
+          return expectedReturn.return;
+        }
+        // Fallback: calculate from CAPE + dividend yield
         const valuation = marketData.valuations.find((v) => v.region === region);
-        if (!valuation) return 0.05; // Default 5%
+        if (!valuation) return 0.05;
         const cape = valuation.cape || 20;
-        const earningsYield = 1 / cape;
-        return earningsYield + valuation.dividendYield;
+        return 1 / cape + valuation.dividendYield;
       });
 
-      // Get volatilities
+      // Get volatilities from market data
       const volatilities = regions.map((region) => {
         const vol = marketData.volatility.find((v) => v.asset === region);
         return vol?.realizedVol1Y || vol?.impliedVol || 0.18;
       });
 
-      // Simple correlation matrix (simplified for MVP)
-      const n = regions.length;
-      const correlationMatrix = Array(n)
-        .fill(null)
-        .map((_, i) =>
-          Array(n)
-            .fill(null)
-            .map((_, j) => {
-              if (i === j) return 1;
-              // Gold has low correlation with equities
-              if (regions[i] === 'Gold' || regions[j] === 'Gold') return 0.1;
-              // Equities are correlated
-              return 0.6;
-            })
+      // Use correlation matrix from Claude if available, otherwise use defaults
+      let correlationMatrix: number[][];
+      if (marketData.correlations?.matrix) {
+        // Reorder to match our regions order if needed
+        const claudeAssets = marketData.correlations.assets;
+        correlationMatrix = regions.map((r1, i) =>
+          regions.map((r2, j) => {
+            if (i === j) return 1;
+            const idx1 = claudeAssets.indexOf(r1);
+            const idx2 = claudeAssets.indexOf(r2);
+            if (idx1 >= 0 && idx2 >= 0) {
+              return marketData.correlations!.matrix[idx1][idx2];
+            }
+            // Default correlations
+            if (r1 === 'Gold' || r2 === 'Gold') return 0.1;
+            return 0.6;
+          })
         );
+      } else {
+        // Default correlation matrix
+        const n = regions.length;
+        correlationMatrix = Array(n).fill(null).map((_, i) =>
+          Array(n).fill(null).map((_, j) => {
+            if (i === j) return 1;
+            if (regions[i] === 'Gold' || regions[j] === 'Gold') return 0.1;
+            return 0.6;
+          })
+        );
+      }
 
       const result = await optimizeApi.optimize({
-        assets,
+        assets: regions,
         expected_returns: expectedReturns,
         volatilities,
         correlation_matrix: correlationMatrix,
@@ -86,21 +106,39 @@ export default function ResultsPage() {
         },
       });
 
-      // Calculate gap analysis
+      // Calculate current allocation using region from ETF metadata
       const currentAllocation: Record<string, number> = {};
       portfolio.holdings.forEach((h) => {
-        // Map tickers to regions (simplified)
-        let region = 'US';
-        if (h.ticker.includes('EUR') || h.ticker === 'EUNK') region = 'Europe';
-        if (h.ticker.includes('GLD') || h.ticker === '4GLD') region = 'Gold';
-        if (h.ticker.includes('EM')) region = 'EM';
-        if (h.ticker.includes('JP')) region = 'Japan';
+        // Use region from ETF metadata if available
+        const region = h.region || guessRegionFromTicker(h.ticker);
         currentAllocation[region] = (currentAllocation[region] || 0) + h.percentage;
+      });
+
+      // Get valuation signals for gap analysis
+      const valuationSignals: Record<string, string> = {};
+      marketData.valuations.forEach((v) => {
+        // Determine signal based on CAPE thresholds
+        const cape = v.cape;
+        if (v.region === 'US') {
+          valuationSignals[v.region] = cape && cape > 35 ? 'cautious' : cape && cape < 25 ? 'favorable' : 'neutral';
+        } else if (v.region === 'Europe') {
+          valuationSignals[v.region] = v.forwardPe && v.forwardPe > 16 ? 'cautious' : v.forwardPe && v.forwardPe < 14 ? 'favorable' : 'neutral';
+        } else {
+          valuationSignals[v.region] = 'neutral';
+        }
+      });
+
+      // Get institutional stances
+      const institutionalStances: Record<string, string> = {};
+      marketData.institutionalViews.forEach((v) => {
+        institutionalStances[v.region] = v.stance;
       });
 
       const gapResult = await optimizeApi.gapAnalysis({
         current_allocation: currentAllocation,
         target_allocation: result.optimal_weights,
+        valuations: valuationSignals,
+        institutional_stances: institutionalStances,
       });
 
       setGapAnalysis(
@@ -110,13 +148,47 @@ export default function ResultsPage() {
           targetPct: r.target_pct,
           gap: r.gap,
           priority: r.priority as 'high' | 'medium' | 'consider' | 'hold' | 'skip',
+          valuationSignal: r.valuation_signal as 'favorable' | 'neutral' | 'cautious' | undefined,
+          institutionalStance: r.institutional_stance as 'overweight' | 'neutral' | 'underweight' | undefined,
         }))
       );
 
+      // Check for rebalancing recommendations
+      try {
+        const rebalanceResult = await fetch('/api/v1/optimize/rebalance-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_allocation: currentAllocation,
+            target_allocation: result.optimal_weights,
+            rebalance_threshold: 5.0,
+          }),
+        });
+        if (rebalanceResult.ok) {
+          const rebalanceData = await rebalanceResult.json();
+          setRebalanceCheck({
+            isRebalanceRecommended: rebalanceData.is_rebalance_recommended,
+            maxDeviation: rebalanceData.max_deviation,
+            overweightPositions: rebalanceData.overweight_positions.map((p: Record<string, unknown>) => ({
+              ticker: p.ticker,
+              currentPct: p.current_pct,
+              targetPct: p.target_pct,
+              excessPct: p.excess_pct,
+              rationale: p.rationale,
+            })),
+            underweightPositions: rebalanceData.underweight_positions,
+            taxNote: rebalanceData.tax_note,
+          });
+        }
+      } catch (err) {
+        console.warn('Rebalance check failed:', err);
+      }
+
       // Get allocation recommendations
-      if (contributionAmount > 0) {
+      if (contributionAmount > 0 && portfolio) {
         const allocResult = await optimizeApi.allocate({
           contribution_amount: contributionAmount,
+          current_portfolio_value: portfolio.totalValueEur,
           gap_analysis: gapResult,
           min_allocation: 500,
         });
@@ -137,6 +209,16 @@ export default function ResultsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fallback function to guess region from ticker name
+  const guessRegionFromTicker = (ticker: string): string => {
+    const t = ticker.toUpperCase();
+    if (t.includes('GLD') || t === '4GLD') return 'Gold';
+    if (t.includes('EM') || t.includes('IEMA')) return 'EM';
+    if (t.includes('JP') || t.includes('IJPA')) return 'Japan';
+    if (t.includes('EUR') || t.includes('MEUD') || t.includes('EUNK')) return 'Europe';
+    return 'US';
   };
 
   useEffect(() => {
@@ -238,6 +320,9 @@ export default function ResultsPage() {
           {gapAnalysis && (
             <div className="card">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Gap Analysis</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Positive gap = underweight (buy opportunity). Negative gap = overweight (consider rebalancing).
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
@@ -246,7 +331,7 @@ export default function ResultsPage() {
                       <th className="px-4 py-2 text-right">Current</th>
                       <th className="px-4 py-2 text-right">Target</th>
                       <th className="px-4 py-2 text-right">Gap</th>
-                      <th className="px-4 py-2 text-center">Priority</th>
+                      <th className="px-4 py-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -256,8 +341,8 @@ export default function ResultsPage() {
                         <td className="px-4 py-2 text-right">{row.currentPct.toFixed(1)}%</td>
                         <td className="px-4 py-2 text-right">{row.targetPct.toFixed(1)}%</td>
                         <td
-                          className={`px-4 py-2 text-right ${
-                            row.gap < 0 ? 'text-red-600' : 'text-green-600'
+                          className={`px-4 py-2 text-right font-medium ${
+                            row.gap > 0 ? 'text-green-600' : row.gap < -3 ? 'text-red-600' : 'text-gray-600'
                           }`}
                         >
                           {row.gap > 0 ? '+' : ''}
@@ -267,17 +352,20 @@ export default function ResultsPage() {
                           <span
                             className={`px-2 py-1 rounded text-xs font-medium ${
                               row.priority === 'high'
-                                ? 'bg-red-100 text-red-700'
+                                ? 'bg-green-100 text-green-700'
                                 : row.priority === 'medium'
-                                ? 'bg-orange-100 text-orange-700'
+                                ? 'bg-blue-100 text-blue-700'
                                 : row.priority === 'consider'
                                 ? 'bg-yellow-100 text-yellow-700'
                                 : row.priority === 'hold'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-700'
+                                ? 'bg-gray-100 text-gray-700'
+                                : 'bg-red-100 text-red-700'
                             }`}
                           >
-                            {row.priority}
+                            {row.priority === 'high' ? 'BUY' :
+                             row.priority === 'medium' ? 'accumulate' :
+                             row.priority === 'consider' ? 'consider' :
+                             row.priority === 'hold' ? 'hold' : 'skip'}
                           </span>
                         </td>
                       </tr>
@@ -288,10 +376,34 @@ export default function ResultsPage() {
             </div>
           )}
 
+          {/* Rebalancing Check */}
+          {rebalanceCheck && rebalanceCheck.isRebalanceRecommended && (
+            <div className="card border-amber-200 bg-amber-50">
+              <h3 className="text-lg font-medium text-amber-900 mb-4">
+                Quarterly Rebalancing Check
+              </h3>
+              <p className="text-amber-700 mb-4">
+                Some positions have drifted significantly from target (max deviation: {rebalanceCheck.maxDeviation.toFixed(1)}%).
+                Consider rebalancing when convenient.
+              </p>
+              {rebalanceCheck.overweightPositions.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  <p className="text-sm font-medium text-amber-800">Overweight positions to consider reducing:</p>
+                  {rebalanceCheck.overweightPositions.map((pos) => (
+                    <div key={pos.ticker} className="p-3 bg-white rounded-lg border border-amber-200">
+                      <span className="font-medium">{pos.ticker}</span>: {pos.excessPct.toFixed(1)}% above target
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-amber-600">{rebalanceCheck.taxNote}</p>
+            </div>
+          )}
+
           {/* Contribution Allocation */}
           <div className="card">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Allocation Recommendation
+              Monthly Contribution Allocation
             </h3>
             <div className="mb-4">
               <label className="label">Contribution Amount (EUR)</label>
@@ -336,7 +448,9 @@ export default function ResultsPage() {
               </div>
             ) : (
               <p className="text-gray-500 text-center py-4">
-                No high-priority allocations. Portfolio is well-balanced.
+                {contributionAmount > 0
+                  ? 'Portfolio is well-balanced. No specific allocation recommendations.'
+                  : 'Enter a contribution amount to see allocation recommendations.'}
               </p>
             )}
           </div>

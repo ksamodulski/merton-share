@@ -38,12 +38,32 @@ class InstitutionalView(BaseModel):
     key_drivers: List[str] = Field(default_factory=list, description="Key rationale")
 
 
+class ExpectedReturn(BaseModel):
+    """Expected return estimate for a region."""
+
+    region: str = Field(..., description="Region name")
+    expected_return: float = Field(..., alias="return", description="Expected annual return (as decimal)")
+    rationale: str = Field(..., description="Rationale for the estimate")
+
+    class Config:
+        populate_by_name = True
+
+
+class CorrelationMatrix(BaseModel):
+    """Correlation matrix between asset classes."""
+
+    assets: List[str] = Field(..., description="Asset names in order")
+    matrix: List[List[float]] = Field(..., description="Correlation matrix")
+
+
 class MarketData(BaseModel):
     """Complete market data package."""
 
     valuations: List[Valuation]
     volatility: List[Volatility]
     institutional_views: List[InstitutionalView]
+    expected_returns: Optional[List[ExpectedReturn]] = Field(None, description="Expected returns by region")
+    correlations: Optional[CorrelationMatrix] = Field(None, description="Correlation matrix")
     risk_free_rate: float = Field(..., description="Risk-free rate (as decimal)")
     eur_pln_rate: float = Field(..., description="EUR/PLN exchange rate")
     fetched_at: datetime = Field(default_factory=datetime.utcnow)

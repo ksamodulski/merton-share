@@ -1,7 +1,7 @@
 """Pydantic models for portfolio data."""
 
 from datetime import date
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -11,6 +11,7 @@ class ETFHolding(BaseModel):
     ticker: str = Field(..., min_length=1, description="ETF ticker symbol")
     isin: Optional[str] = Field(None, description="ISIN identifier")
     name: Optional[str] = Field(None, description="Full ETF name")
+    region: Optional[str] = Field(None, description="Asset region: US, Europe, Japan, EM, Gold")
     value_eur: float = Field(..., gt=0, description="Current value in EUR")
     percentage: float = Field(
         ..., ge=0, le=100, description="Percentage of portfolio"
@@ -77,12 +78,41 @@ class PortfolioInput(BaseModel):
     bond_position: Optional[BondPosition] = None
 
 
-class ScreenshotParseResult(BaseModel):
-    """Result from parsing IBKR screenshot."""
+class CSVParseResult(BaseModel):
+    """Result from parsing IBKR CSV export."""
 
     holdings: List[ETFHolding]
     total_value_eur: float
-    extraction_confidence: str = Field(
-        ..., pattern="^(high|medium|low)$"
-    )
-    notes: Optional[str] = None
+    num_positions: int = Field(..., description="Number of positions parsed")
+
+
+class ETFMetadata(BaseModel):
+    """Metadata for an ETF from Claude lookup."""
+
+    ticker: str = Field(..., description="ETF ticker symbol")
+    region: str = Field(..., description="Asset region: US, Europe, Japan, EM, Gold")
+    name: Optional[str] = Field(None, description="Full ETF name")
+    isin: Optional[str] = Field(None, description="ISIN identifier")
+    ter: Optional[float] = Field(None, ge=0, lt=1, description="Total Expense Ratio")
+    is_accumulating: Optional[bool] = Field(None, description="True if accumulating")
+    description: Optional[str] = Field(None, description="Brief description")
+
+
+class ETFLookupRequest(BaseModel):
+    """Request for ETF metadata lookup."""
+
+    tickers: List[str] = Field(..., min_length=1, description="List of ticker symbols")
+
+
+class ETFLookupResponse(BaseModel):
+    """Response from ETF metadata lookup."""
+
+    etfs: List[ETFMetadata]
+    lookup_source: str = Field("claude", description="Source of lookup data")
+
+
+class ETFMappingsExport(BaseModel):
+    """Export format for ETF mappings."""
+
+    mappings: Dict[str, ETFMetadata]
+    exported_at: str = Field(..., description="ISO timestamp of export")

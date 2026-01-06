@@ -13,6 +13,9 @@ from app.models.optimization import (
     AllocationRequest,
     AllocationResponse,
     AllocationRecommendation,
+    RebalanceCheckRequest,
+    RebalanceResponse,
+    SellRecommendation,
 )
 
 router = APIRouter()
@@ -120,28 +123,34 @@ def _calculate_priority(
     valuation: str | None,
     institutional: str | None,
 ) -> str:
-    """Calculate priority based on gap analysis rules."""
-    # Skip if overweight
-    if gap > 3:
+    """
+    Calculate priority based on gap analysis rules.
+
+    Gap = target - current:
+    - Positive gap: underweight (need to BUY)
+    - Negative gap: overweight (should SKIP buying, maybe SELL)
+    """
+    # Skip if overweight (current > target)
+    if gap < -3:
         return "skip"
 
     # Hold if within +/-3%
     if -3 <= gap <= 3:
         return "hold"
 
-    # Check for cautious signals
+    # Check for cautious signals (reasons to NOT buy)
     is_cautious = valuation == "cautious" or institutional == "underweight"
 
-    # High priority: Gap < -5% AND not cautious
-    if gap < -5 and not is_cautious:
+    # High priority: Gap > 5% (significantly underweight) AND not cautious
+    if gap > 5 and not is_cautious:
         return "high"
 
-    # Medium priority: Gap -3% to -5% AND not cautious
-    if -5 <= gap < -3 and not is_cautious:
+    # Medium priority: Gap 3% to 5% (moderately underweight) AND not cautious
+    if 3 < gap <= 5 and not is_cautious:
         return "medium"
 
-    # Consider: underweight but cautious signals
-    if gap < -3 and is_cautious:
+    # Consider: underweight but cautious signals suggest caution
+    if gap > 3 and is_cautious:
         return "consider"
 
     return "hold"
@@ -152,65 +161,135 @@ async def calculate_allocation(request: AllocationRequest) -> AllocationResponse
     """
     Calculate allocation recommendations for a contribution.
 
-    Rules:
-    - Only allocate to high or medium priority positions
-    - Minimum allocation per ETF (default 500 EUR)
-    - Concentrate in highest priorities if few qualify
+    Logic:
+    1. Calculate future portfolio value (current + contribution)
+    2. For each underweight asset, calculate EUR needed to reach target
+    3. Spread contribution across underweight assets proportionally
+    4. Respect minimum allocation per ETF
     """
     recommendations = []
-    remaining = request.contribution_amount
+    contribution = request.contribution_amount
+    current_value = request.current_portfolio_value
+    future_value = current_value + contribution
 
-    # Get priority assets
+    # Get priority assets (underweight positions worth buying)
     priority_assets = request.gap_analysis.high_priority + request.gap_analysis.medium_priority
 
     if not priority_assets:
         return AllocationResponse(
-            total_contribution=request.contribution_amount,
+            total_contribution=contribution,
             recommendations=[],
-            unallocated=request.contribution_amount,
+            unallocated=contribution,
         )
 
-    # Find gap data for priority assets
-    priority_gaps = {}
+    # Calculate EUR gap for each priority asset
+    # EUR gap = (target% * future_value) - (current% * current_value)
+    eur_gaps = {}
     for row in request.gap_analysis.rows:
-        if row.ticker in priority_assets:
-            priority_gaps[row.ticker] = abs(row.gap)
+        if row.ticker in priority_assets and row.gap > 0:  # Only underweight
+            current_eur = (row.current_pct / 100) * current_value
+            target_eur = (row.target_pct / 100) * future_value
+            eur_needed = target_eur - current_eur
+            if eur_needed > 0:
+                eur_gaps[row.ticker] = eur_needed
 
-    # Sort by gap size (largest first)
-    sorted_assets = sorted(priority_gaps.keys(), key=lambda x: priority_gaps[x], reverse=True)
+    if not eur_gaps:
+        return AllocationResponse(
+            total_contribution=contribution,
+            recommendations=[],
+            unallocated=contribution,
+        )
 
-    # Calculate proportional allocation based on gap size
-    total_gap = sum(priority_gaps.values())
+    # Calculate total EUR needed to fill all gaps
+    total_eur_needed = sum(eur_gaps.values())
 
-    for asset in sorted_assets:
-        if remaining < request.min_allocation:
-            break
+    # Sort assets by EUR gap (largest first)
+    sorted_gaps = sorted(eur_gaps.items(), key=lambda x: x[1], reverse=True)
 
-        # Calculate proportional amount
-        proportion = priority_gaps[asset] / total_gap if total_gap > 0 else 1 / len(sorted_assets)
-        amount = request.contribution_amount * proportion
+    # Allocate based on EUR gaps
+    remaining = contribution
+    allocations = {}
 
-        # Round to minimum allocation
-        amount = max(request.min_allocation, round(amount / 100) * 100)
-        amount = min(amount, remaining)
+    # First pass: calculate ideal proportional allocations
+    ideal_allocations = {}
+    for asset, eur_needed in sorted_gaps:
+        if total_eur_needed <= contribution:
+            ideal_allocations[asset] = eur_needed
+        else:
+            proportion = eur_needed / total_eur_needed
+            ideal_allocations[asset] = contribution * proportion
 
-        if amount >= request.min_allocation:
-            # Find the row for rationale
-            row = next((r for r in request.gap_analysis.rows if r.ticker == asset), None)
-            rationale = _build_rationale(row) if row else ""
+    # Second pass: consolidate small allocations into larger ones
+    # If individual allocation < min_allocation, concentrate into fewer assets
+    viable_assets = [a for a, amt in ideal_allocations.items() if amt >= request.min_allocation]
 
-            recommendations.append(
-                AllocationRecommendation(
-                    ticker=asset,
-                    amount_eur=amount,
-                    percentage_of_contribution=(amount / request.contribution_amount) * 100,
-                    rationale=rationale,
-                )
+    if not viable_assets and sorted_gaps:
+        # No single allocation meets minimum - concentrate into top N assets
+        # that can each receive at least min_allocation
+        max_assets = int(contribution / request.min_allocation)
+        if max_assets > 0:
+            viable_assets = [a for a, _ in sorted_gaps[:max_assets]]
+
+    # Recalculate for viable assets only
+    if viable_assets:
+        viable_eur_gaps = {a: eur_gaps[a] for a in viable_assets}
+        viable_total = sum(viable_eur_gaps.values())
+
+        for asset in viable_assets:
+            if remaining < request.min_allocation:
+                break
+
+            if viable_total <= remaining:
+                amount = viable_eur_gaps[asset]
+            else:
+                proportion = viable_eur_gaps[asset] / viable_total
+                amount = contribution * proportion
+
+            # Round to nearest 100
+            amount = round(amount / 100) * 100
+            amount = max(request.min_allocation, amount)  # Ensure minimum
+            amount = min(amount, remaining)  # Cap at remaining
+
+            if amount >= request.min_allocation:
+                allocations[asset] = amount
+                remaining -= amount
+
+    # If we have extra (all gaps filled with money left over), distribute proportionally
+    if remaining >= request.min_allocation and allocations:
+        extra_per_asset = remaining / len(allocations)
+        for asset in allocations:
+            extra = round(extra_per_asset / 100) * 100
+            if extra >= 100:
+                allocations[asset] += extra
+                remaining -= extra
+
+    # Build recommendations
+    for asset, amount in allocations.items():
+        row = next((r for r in request.gap_analysis.rows if r.ticker == asset), None)
+        eur_needed = eur_gaps.get(asset, 0)
+
+        # Build rationale showing how this moves toward target
+        if row:
+            new_value = (row.current_pct / 100) * current_value + amount
+            new_pct = (new_value / future_value) * 100
+            rationale = f"{row.gap:.1f}% underweight → {new_pct:.1f}% after (target: {row.target_pct:.1f}%)"
+        else:
+            rationale = f"€{eur_needed:,.0f} needed to reach target"
+
+        recommendations.append(
+            AllocationRecommendation(
+                ticker=asset,
+                amount_eur=amount,
+                percentage_of_contribution=(amount / contribution) * 100,
+                rationale=rationale,
             )
-            remaining -= amount
+        )
+
+    # Sort by amount (largest first)
+    recommendations.sort(key=lambda r: r.amount_eur, reverse=True)
 
     return AllocationResponse(
-        total_contribution=request.contribution_amount,
+        total_contribution=contribution,
         recommendations=recommendations,
         unallocated=remaining,
     )
@@ -228,3 +307,54 @@ def _build_rationale(row: GapAnalysisRow) -> str:
         parts.append(f"institutional {row.institutional_stance}")
 
     return ", ".join(parts)
+
+
+@router.post("/rebalance-check", response_model=RebalanceResponse)
+async def check_rebalancing(request: RebalanceCheckRequest) -> RebalanceResponse:
+    """
+    Check if portfolio rebalancing is recommended.
+
+    Analyzes deviation from target allocation and identifies
+    positions that are significantly overweight (candidates for selling).
+    """
+    overweight_positions = []
+    underweight_positions = []
+    max_deviation = 0.0
+
+    all_assets = set(request.current_allocation.keys()) | set(
+        request.target_allocation.keys()
+    )
+
+    for asset in sorted(all_assets):
+        current = request.current_allocation.get(asset, 0.0)
+        target = request.target_allocation.get(asset, 0.0)
+        gap = target - current  # Positive = underweight, Negative = overweight
+        deviation = abs(gap)
+
+        max_deviation = max(max_deviation, deviation)
+
+        # Significantly overweight (negative gap exceeds threshold)
+        if gap < -request.rebalance_threshold:
+            excess = abs(gap)
+            overweight_positions.append(
+                SellRecommendation(
+                    ticker=asset,
+                    current_pct=current,
+                    target_pct=target,
+                    excess_pct=excess,
+                    rationale=f"Position is {excess:.1f}% above target allocation"
+                )
+            )
+        # Significantly underweight (positive gap exceeds threshold)
+        elif gap > request.rebalance_threshold:
+            underweight_positions.append(asset)
+
+    # Recommend rebalancing if any position exceeds threshold
+    is_rebalance_recommended = len(overweight_positions) > 0 or len(underweight_positions) > 0
+
+    return RebalanceResponse(
+        is_rebalance_recommended=is_rebalance_recommended,
+        max_deviation=max_deviation,
+        overweight_positions=overweight_positions,
+        underweight_positions=underweight_positions,
+    )
