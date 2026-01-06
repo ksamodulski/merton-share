@@ -2,7 +2,12 @@
 
 from datetime import datetime
 from typing import Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+# Bounds for expected returns validation
+EXPECTED_RETURN_MIN = -0.05  # -5%
+EXPECTED_RETURN_MAX = 0.15   # +15%
 
 
 class Valuation(BaseModel):
@@ -14,6 +19,12 @@ class Valuation(BaseModel):
     dividend_yield: float = Field(..., description="Dividend yield (as decimal)")
     source: str = Field(..., description="Data source")
     date: str = Field(..., description="Data date")
+    source_date: Optional[str] = Field(None, description="Date of the source data")
+    confidence: Optional[str] = Field(
+        None,
+        pattern="^(high|medium|low)$",
+        description="Confidence level of the data"
+    )
 
 
 class Volatility(BaseModel):
@@ -23,6 +34,12 @@ class Volatility(BaseModel):
     implied_vol: Optional[float] = Field(None, description="Implied volatility (as decimal)")
     realized_vol_1y: Optional[float] = Field(None, description="1Y realized volatility (as decimal)")
     source: str = Field(..., description="Data source")
+    source_date: Optional[str] = Field(None, description="Date of the source data")
+    confidence: Optional[str] = Field(
+        None,
+        pattern="^(high|medium|low)$",
+        description="Confidence level of the data"
+    )
 
 
 class InstitutionalView(BaseModel):
@@ -36,6 +53,11 @@ class InstitutionalView(BaseModel):
     )
     sources: List[str] = Field(..., description="Institutions providing this view")
     key_drivers: List[str] = Field(default_factory=list, description="Key rationale")
+    confidence: Optional[str] = Field(
+        None,
+        pattern="^(high|medium|low)$",
+        description="Confidence level of the view"
+    )
 
 
 class ExpectedReturn(BaseModel):
@@ -44,9 +66,34 @@ class ExpectedReturn(BaseModel):
     region: str = Field(..., description="Region name")
     expected_return: float = Field(..., alias="return", description="Expected annual return (as decimal)")
     rationale: str = Field(..., description="Rationale for the estimate")
+    confidence: Optional[str] = Field(
+        None,
+        pattern="^(high|medium|low)$",
+        description="Confidence level of the estimate"
+    )
+    is_suspicious: bool = Field(
+        False,
+        description="True if value is outside typical range [-5%, +15%]"
+    )
+    warning_message: Optional[str] = Field(
+        None,
+        description="Warning message if value is suspicious"
+    )
 
     class Config:
         populate_by_name = True
+
+    @model_validator(mode="after")
+    def check_bounds(self) -> "ExpectedReturn":
+        """Flag values outside typical range as suspicious."""
+        if not (EXPECTED_RETURN_MIN <= self.expected_return <= EXPECTED_RETURN_MAX):
+            self.is_suspicious = True
+            self.warning_message = (
+                f"Expected return {self.expected_return:.1%} for {self.region} "
+                f"is outside typical range [{EXPECTED_RETURN_MIN:.0%}, {EXPECTED_RETURN_MAX:.0%}]. "
+                f"Please verify this value."
+            )
+        return self
 
 
 class CorrelationMatrix(BaseModel):

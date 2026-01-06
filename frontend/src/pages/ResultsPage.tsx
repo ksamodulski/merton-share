@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import { optimizeApi } from '../services/api';
-import type { RebalanceCheck } from '../types';
+import type { RebalanceCheck, ExpectedReturn } from '../types';
+import SuspiciousValuesModal from '../components/modals/SuspiciousValuesModal';
 
 // Realistic default correlations based on historical data (10-year rolling)
 // Key: Japan has lower correlation (0.55-0.65), US-Europe highly correlated (0.85)
@@ -33,6 +34,9 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rebalanceCheck, setRebalanceCheck] = useState<RebalanceCheck | null>(null);
+  const [showSuspiciousModal, setShowSuspiciousModal] = useState(false);
+  const [suspiciousReturns, setSuspiciousReturns] = useState<ExpectedReturn[]>([]);
+  const [expectedReturnOverrides, setExpectedReturnOverrides] = useState<Record<string, number>>({});
   const [postAllocationPreview, setPostAllocationPreview] = useState<Array<{
     ticker: string;
     current_eur: number;
@@ -45,10 +49,26 @@ export default function ResultsPage() {
     gap_after: number;
   }> | null>(null);
 
-  const runOptimization = async () => {
+  // Check for suspicious expected returns before running optimization
+  const checkForSuspiciousValues = (): ExpectedReturn[] => {
+    if (!marketData?.expectedReturns) return [];
+    return marketData.expectedReturns.filter((r) => r.isSuspicious);
+  };
+
+  const runOptimization = async (skipSuspiciousCheck = false) => {
     if (!portfolio || !crra || !marketData) {
       setError('Missing required data. Please complete all previous steps.');
       return;
+    }
+
+    // Check for suspicious values first (unless we're proceeding after user confirmation)
+    if (!skipSuspiciousCheck) {
+      const suspicious = checkForSuspiciousValues();
+      if (suspicious.length > 0) {
+        setSuspiciousReturns(suspicious);
+        setShowSuspiciousModal(true);
+        return; // Wait for user decision
+      }
     }
 
     setLoading(true);
@@ -59,8 +79,13 @@ export default function ResultsPage() {
       const regions = ['US', 'Europe', 'Japan', 'EM', 'Gold'];
 
       // Use expected returns from Claude if available, otherwise calculate from CAPE
+      // Apply any user overrides
       const expectedReturns = regions.map((region) => {
-        // First try Claude's expected returns
+        // First check if user has overridden this value
+        if (expectedReturnOverrides[region] !== undefined) {
+          return expectedReturnOverrides[region];
+        }
+        // Then try Claude's expected returns
         const expectedReturn = marketData.expectedReturns?.find((r) => r.region === region);
         if (expectedReturn) {
           return expectedReturn.return;
@@ -118,6 +143,8 @@ export default function ResultsPage() {
           sharpeRatio: result.portfolio_stats.sharpe_ratio,
           crraUtility: result.portfolio_stats.crra_utility,
           riskContribution: result.portfolio_stats.risk_contribution,
+          returnConfidenceInterval: result.portfolio_stats.return_confidence_interval,
+          estimationUncertainty: result.portfolio_stats.estimation_uncertainty,
         },
       });
 
@@ -241,6 +268,24 @@ export default function ResultsPage() {
     return 'US';
   };
 
+  // Modal handlers
+  const handleConfirmSuspicious = () => {
+    setShowSuspiciousModal(false);
+    runOptimization(true); // Skip the check since user confirmed
+  };
+
+  const handleRejectSuspicious = async () => {
+    setShowSuspiciousModal(false);
+    // Trigger a re-fetch of market data (this would need to be implemented in the store)
+    setError('Please go back to Market Data step and refresh the data.');
+  };
+
+  const handleOverrideSuspicious = (overrides: Record<string, number>) => {
+    setExpectedReturnOverrides(overrides);
+    setShowSuspiciousModal(false);
+    runOptimization(true); // Run with the overrides applied
+  };
+
   useEffect(() => {
     if (portfolio && crra && marketData && !optimizationResult) {
       runOptimization();
@@ -262,6 +307,16 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Suspicious Values Modal */}
+      <SuspiciousValuesModal
+        suspiciousReturns={suspiciousReturns}
+        onConfirm={handleConfirmSuspicious}
+        onReject={handleRejectSuspicious}
+        onOverride={handleOverrideSuspicious}
+        isOpen={showSuspiciousModal}
+        onClose={() => setShowSuspiciousModal(false)}
+      />
+
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">Optimization Results</h2>
         <p className="mt-1 text-gray-500">
@@ -410,13 +465,33 @@ export default function ResultsPage() {
 
           {/* Portfolio Stats */}
           <div className="card">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Portfolio Statistics</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Portfolio Statistics</h3>
+              {optimizationResult.portfolioStats.estimationUncertainty && (
+                <span
+                  className={`px-2 py-1 text-xs rounded font-medium ${
+                    optimizationResult.portfolioStats.estimationUncertainty === 'low'
+                      ? 'bg-green-100 text-green-700'
+                      : optimizationResult.portfolioStats.estimationUncertainty === 'medium'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}
+                >
+                  {optimizationResult.portfolioStats.estimationUncertainty} uncertainty
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="text-sm text-gray-500">Expected Return</div>
                 <div className="text-xl font-semibold text-green-600">
                   {optimizationResult.portfolioStats.return.toFixed(1)}%
                 </div>
+                {optimizationResult.portfolioStats.returnConfidenceInterval && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    95% CI: [{optimizationResult.portfolioStats.returnConfidenceInterval[0].toFixed(1)}%, {optimizationResult.portfolioStats.returnConfidenceInterval[1].toFixed(1)}%]
+                  </div>
+                )}
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="text-sm text-gray-500">Volatility</div>
@@ -539,7 +614,7 @@ export default function ResultsPage() {
                 step="100"
               />
               <button
-                onClick={runOptimization}
+                onClick={() => runOptimization()}
                 className="ml-3 btn btn-secondary"
                 disabled={loading}
               >
@@ -641,7 +716,7 @@ export default function ResultsPage() {
           </div>
         </>
       ) : (
-        <button onClick={runOptimization} className="btn btn-primary w-full">
+        <button onClick={() => runOptimization()} className="btn btn-primary w-full">
           Run Optimization
         </button>
       )}

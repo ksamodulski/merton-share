@@ -37,13 +37,24 @@ class OptimizationRequest(BaseModel):
 
 
 class PortfolioStats(BaseModel):
-    """Portfolio statistics."""
+    """Portfolio statistics with uncertainty estimates."""
 
     return_pct: float = Field(..., alias="return", description="Expected return (%)")
     volatility: float = Field(..., description="Portfolio volatility (%)")
     sharpe_ratio: float = Field(..., description="Sharpe ratio")
     crra_utility: float = Field(..., description="CRRA utility value")
     risk_contribution: Dict[str, float] = Field(..., description="Risk contribution by asset (%)")
+
+    # Uncertainty estimates
+    return_confidence_interval: Optional[tuple[float, float]] = Field(
+        None,
+        description="95% confidence interval for expected return (%)"
+    )
+    estimation_uncertainty: Optional[str] = Field(
+        None,
+        pattern="^(low|medium|high)$",
+        description="Overall estimation uncertainty level"
+    )
 
     class Config:
         populate_by_name = True

@@ -1,66 +1,86 @@
-Today is {today}. Provide current market data for portfolio optimization.
+Today is {today}. Provide CURRENT market data for portfolio optimization.
 
-I need the following data. Use your most recent knowledge. If you're uncertain about exact current values, provide your best estimate based on recent trends and note the uncertainty.
+IMPORTANT: Use web search to find real-time data from these AUTHORITATIVE SOURCES:
+
+DATA SOURCES (in order of preference):
+- CAPE ratios: multpl.com/shiller-pe, Robert Shiller's website (yale.edu/~shiller)
+- Volatility: VIX from CBOE (cboe.com), VSTOXX from stoxx.com
+- ECB rates: ecb.europa.eu (official deposit facility rate)
+- EUR/PLN: ECB or xe.com
+- Dividend yields: S&P Global, MSCI, dividend.com
+- Institutional views: BlackRock Investment Institute, Vanguard Market Perspectives, Goldman Sachs Research
+
+For EACH data point you provide:
+1. Search for the most recent value
+2. Include the source URL or name
+3. Include the date of the data
+4. Add a confidence level: "high" (official source), "medium" (reputable estimate), "low" (extrapolated)
 
 Required data:
 
 1. VALUATIONS (CAPE, Forward P/E, Dividend Yield):
-   - US (S&P 500)
+   - US (S&P 500) - Search multpl.com for current Shiller PE
    - Europe (Stoxx 600)
    - Japan (Topix/Nikkei)
    - Emerging Markets (MSCI EM)
 
 2. VOLATILITY (use annualized values as decimals, e.g., 0.16 for 16%):
-   - US equities
-   - Europe equities
+   - US equities - Search for current VIX level
+   - Europe equities - Search for VSTOXX
    - Japan equities
    - EM equities
-   - Gold
+   - Gold - Search for GVZ (Gold Volatility Index)
 
 3. EXPECTED RETURNS (annualized, next 10 years, as decimals):
-   Consider CAPE-based earnings yield, dividend yield, GDP growth expectations, and current valuations.
+   METHODOLOGY: Use this formula as a baseline:
+   - Equities: (1/CAPE) + dividend_yield + growth_adjustment
+   - Gold: 0% real return + inflation expectation (~2%)
+
+   NOTE: Typical range is -5% to +15%. Values outside this range will be flagged for user review, but include them if supported by credible sources.
+
    - US Equities
    - Europe Equities
    - Japan Equities
    - EM Equities
-   - Gold
+   - Gold (diversifying asset, NOT a safe-haven)
 
 4. CORRELATIONS (between asset classes):
    Provide a 5x5 correlation matrix for: US, Europe, Japan, EM, Gold
-   Use realistic values based on historical correlations.
+   Use realistic values based on historical 10-year correlations.
 
 5. RATES:
-   - ECB deposit rate or German Bund yield (EUR risk-free rate)
+   - ECB deposit rate (search ecb.europa.eu for current rate)
+   - German 10-year Bund yield
    - Current EUR/PLN exchange rate
 
-6. INSTITUTIONAL VIEWS (general consensus from major firms like BlackRock, Vanguard, Goldman):
+6. INSTITUTIONAL VIEWS (search for recent outlook reports):
    - US Equities: overweight/neutral/underweight
    - Europe Equities: overweight/neutral/underweight
    - Japan Equities: overweight/neutral/underweight
    - EM Equities: overweight/neutral/underweight
    - Gold: overweight/neutral/underweight
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with this EXACT structure:
 {{
   "valuations": [
-    {{"region": "US", "cape": 35.0, "forward_pe": 21.5, "dividend_yield": 0.013, "source": "estimate", "date": "{today}"}},
-    {{"region": "Europe", "cape": 15.0, "forward_pe": 13.0, "dividend_yield": 0.028, "source": "estimate", "date": "{today}"}},
-    {{"region": "Japan", "cape": 22.0, "forward_pe": 15.0, "dividend_yield": 0.020, "source": "estimate", "date": "{today}"}},
-    {{"region": "EM", "cape": 12.0, "forward_pe": 12.0, "dividend_yield": 0.025, "source": "estimate", "date": "{today}"}}
+    {{"region": "US", "cape": 35.0, "forward_pe": 21.5, "dividend_yield": 0.013, "source": "multpl.com/shiller-pe", "source_date": "{today}", "confidence": "high"}},
+    {{"region": "Europe", "cape": 15.0, "forward_pe": 13.0, "dividend_yield": 0.028, "source": "stoxx.com", "source_date": "{today}", "confidence": "medium"}},
+    {{"region": "Japan", "cape": 22.0, "forward_pe": 15.0, "dividend_yield": 0.020, "source": "estimate", "source_date": "{today}", "confidence": "low"}},
+    {{"region": "EM", "cape": 12.0, "forward_pe": 12.0, "dividend_yield": 0.025, "source": "msci.com", "source_date": "{today}", "confidence": "medium"}}
   ],
   "volatility": [
-    {{"asset": "US", "implied_vol": 0.16, "realized_vol_1y": 0.15, "source": "VIX-based"}},
-    {{"asset": "Europe", "implied_vol": 0.18, "realized_vol_1y": 0.17, "source": "VSTOXX-based"}},
-    {{"asset": "Japan", "implied_vol": 0.20, "realized_vol_1y": 0.19, "source": "estimate"}},
-    {{"asset": "EM", "implied_vol": 0.22, "realized_vol_1y": 0.21, "source": "estimate"}},
-    {{"asset": "Gold", "implied_vol": 0.15, "realized_vol_1y": 0.14, "source": "GVZ-based"}}
+    {{"asset": "US", "implied_vol": 0.16, "realized_vol_1y": 0.15, "source": "cboe.com VIX", "source_date": "{today}", "confidence": "high"}},
+    {{"asset": "Europe", "implied_vol": 0.18, "realized_vol_1y": 0.17, "source": "stoxx.com VSTOXX", "source_date": "{today}", "confidence": "high"}},
+    {{"asset": "Japan", "implied_vol": 0.20, "realized_vol_1y": 0.19, "source": "estimate", "source_date": "{today}", "confidence": "low"}},
+    {{"asset": "EM", "implied_vol": 0.22, "realized_vol_1y": 0.21, "source": "estimate", "source_date": "{today}", "confidence": "low"}},
+    {{"asset": "Gold", "implied_vol": 0.15, "realized_vol_1y": 0.14, "source": "cboe.com GVZ", "source_date": "{today}", "confidence": "high"}}
   ],
   "expected_returns": [
-    {{"region": "US", "return": 0.05, "rationale": "High CAPE limits long-term returns"}},
-    {{"region": "Europe", "return": 0.07, "rationale": "Attractive valuations support returns"}},
-    {{"region": "Japan", "return": 0.06, "rationale": "Corporate reforms improving shareholder returns"}},
-    {{"region": "EM", "return": 0.08, "rationale": "Higher growth potential despite volatility"}},
-    {{"region": "Gold", "return": 0.04, "rationale": "Long-term real return expectation"}}
+    {{"region": "US", "return": 0.05, "rationale": "1/35 CAPE + 1.3% div yield = ~4.2%, rounded", "confidence": "medium"}},
+    {{"region": "Europe", "return": 0.07, "rationale": "1/15 CAPE + 2.8% div yield = ~9.5%, adjusted down for risks", "confidence": "medium"}},
+    {{"region": "Japan", "return": 0.06, "rationale": "1/22 CAPE + 2.0% div yield = ~6.5%", "confidence": "medium"}},
+    {{"region": "EM", "return": 0.08, "rationale": "1/12 CAPE + 2.5% div yield = ~10.8%, adjusted for EM risk", "confidence": "low"}},
+    {{"region": "Gold", "return": 0.03, "rationale": "0% real + 2-3% inflation = ~3% nominal", "confidence": "low"}}
   ],
   "correlations": {{
     "assets": ["US", "Europe", "Japan", "EM", "Gold"],
@@ -70,19 +90,28 @@ Return ONLY valid JSON:
       [0.65, 0.60, 1.00, 0.55, 0.05],
       [0.70, 0.65, 0.55, 1.00, 0.15],
       [0.05, 0.10, 0.05, 0.15, 1.00]
-    ]
+    ],
+    "source": "10-year historical correlations",
+    "confidence": "medium"
   }},
   "institutional_views": [
-    {{"region": "US", "stance": "neutral", "sources": ["BlackRock", "Vanguard"], "key_drivers": ["High valuations", "AI momentum"]}},
-    {{"region": "Europe", "stance": "overweight", "sources": ["Goldman Sachs"], "key_drivers": ["Attractive valuations"]}},
-    {{"region": "Japan", "stance": "overweight", "sources": ["BlackRock"], "key_drivers": ["Corporate reforms"]}},
-    {{"region": "EM", "stance": "neutral", "sources": ["JPMorgan"], "key_drivers": ["China uncertainty"]}},
-    {{"region": "Gold", "stance": "neutral", "sources": ["Various"], "key_drivers": ["Inflation hedge"]}}
+    {{"region": "US", "stance": "neutral", "sources": ["BlackRock Q1 2025 Outlook"], "key_drivers": ["High valuations offset by AI momentum"], "confidence": "high"}},
+    {{"region": "Europe", "stance": "overweight", "sources": ["Goldman Sachs 2025 Outlook"], "key_drivers": ["Attractive valuations"], "confidence": "high"}},
+    {{"region": "Japan", "stance": "overweight", "sources": ["BlackRock"], "key_drivers": ["Corporate governance reforms"], "confidence": "medium"}},
+    {{"region": "EM", "stance": "neutral", "sources": ["JPMorgan EM Outlook"], "key_drivers": ["China uncertainty, India growth"], "confidence": "medium"}},
+    {{"region": "Gold", "stance": "neutral", "sources": ["Various"], "key_drivers": ["Inflation hedge, geopolitical risk"], "confidence": "low"}}
   ],
   "risk_free_rate": 0.025,
+  "risk_free_rate_source": "ECB deposit facility rate",
   "eur_pln_rate": 4.30,
-  "data_quality": "estimates based on knowledge cutoff",
-  "sources": ["Claude knowledge base", "Recent market analysis"]
+  "eur_pln_source": "ECB reference rate",
+  "data_quality": "mixed - see confidence levels per field",
+  "sources": ["Web search results from {today}"]
 }}
 
-Be realistic with values - they should reflect actual recent market conditions.
+CRITICAL RULES:
+1. Use web search for EVERY data point where possible
+2. Expected returns typically range from -5% to +15%. If a credible source reports values outside this range, include them but note in the rationale why they are unusual.
+3. Always cite your sources with dates
+4. Mark confidence as "low" if estimating without a source
+5. Be realistic - these values drive real investment decisions

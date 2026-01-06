@@ -86,6 +86,9 @@ export interface ExpectedReturn {
   region: string;
   return: number;
   rationale: string;
+  confidence?: 'high' | 'medium' | 'low';
+  isSuspicious?: boolean;
+  warningMessage?: string;
 }
 
 export interface CorrelationMatrix {
@@ -114,6 +117,8 @@ export interface OptimizationResult {
     sharpeRatio: number;
     crraUtility: number;
     riskContribution: Record<string, number>;
+    returnConfidenceInterval?: [number, number];
+    estimationUncertainty?: 'low' | 'medium' | 'high';
   };
 }
 

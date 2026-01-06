@@ -154,7 +154,8 @@ class PortfolioOptimizer:
             weights: Portfolio weights array
 
         Returns:
-            Dictionary with return, volatility, sharpe_ratio, crra_utility, risk_contribution
+            Dictionary with return, volatility, sharpe_ratio, crra_utility, risk_contribution,
+            and uncertainty estimates (confidence interval, estimation_uncertainty)
         """
         portfolio_return = float(np.sum(weights * self.expected_returns))
         portfolio_var = float(weights.T @ self.cov_matrix @ weights)
@@ -169,6 +170,9 @@ class PortfolioOptimizer:
         # CRRA utility approximation
         crra_utility = portfolio_return - (self.crra / 2) * portfolio_var
 
+        # Calculate uncertainty estimates
+        uncertainty = self._estimate_uncertainty(weights, portfolio_return)
+
         return {
             "return": portfolio_return * 100,  # As percentage
             "volatility": portfolio_vol * 100,  # As percentage
@@ -177,6 +181,58 @@ class PortfolioOptimizer:
             "risk_contribution": self._calculate_risk_contributions(
                 weights, portfolio_vol
             ),
+            "return_confidence_interval": uncertainty["return_confidence_interval"],
+            "estimation_uncertainty": uncertainty["estimation_uncertainty"],
+        }
+
+    def _estimate_uncertainty(
+        self, weights: np.ndarray, portfolio_return: float
+    ) -> Dict:
+        """
+        Estimate uncertainty in portfolio statistics.
+
+        This provides a simple uncertainty estimate based on the spread of
+        input expected returns. More sophisticated approaches would use
+        bootstrap resampling or analytical formulas from estimation theory.
+
+        Args:
+            weights: Portfolio weights array
+            portfolio_return: Calculated portfolio return
+
+        Returns:
+            Dictionary with return_confidence_interval (95% CI) and
+            estimation_uncertainty (low/medium/high)
+        """
+        # Use the standard deviation of expected returns as a proxy for estimation error
+        return_spread = float(np.std(self.expected_returns))
+
+        # Simple 95% confidence interval using 2 standard errors
+        # This is a simplified approach - in practice, you'd use more
+        # sophisticated estimation error propagation
+        standard_error = return_spread / np.sqrt(len(self.expected_returns))
+
+        ci_low = (portfolio_return - 2 * standard_error) * 100
+        ci_high = (portfolio_return + 2 * standard_error) * 100
+
+        # Also factor in portfolio weights - concentrated portfolios have more uncertainty
+        weight_concentration = float(np.sum(weights ** 2))  # Herfindahl index
+        concentration_adjustment = weight_concentration * return_spread * 100
+
+        # Adjust CI for concentration
+        ci_low -= concentration_adjustment
+        ci_high += concentration_adjustment
+
+        # Categorize overall uncertainty
+        if return_spread < 0.015:
+            estimation_uncertainty = "low"
+        elif return_spread < 0.03:
+            estimation_uncertainty = "medium"
+        else:
+            estimation_uncertainty = "high"
+
+        return {
+            "return_confidence_interval": (round(ci_low, 2), round(ci_high, 2)),
+            "estimation_uncertainty": estimation_uncertainty,
         }
 
     def _calculate_risk_contributions(
