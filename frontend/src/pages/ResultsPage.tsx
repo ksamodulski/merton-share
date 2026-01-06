@@ -16,7 +16,7 @@ const DEFAULT_CORRELATIONS: Record<string, Record<string, number>> = {
 export default function ResultsPage() {
   const {
     portfolio,
-    // bondPosition - reserved for future bond allocation display
+    bondPosition,
     crra,
     marketData,
     contributionAmount,
@@ -282,9 +282,109 @@ export default function ResultsPage() {
         </div>
       ) : optimizationResult ? (
         <>
-          {/* Optimal Weights */}
+          {/* Portfolio Summary - Bonds vs Risky Assets */}
+          {(() => {
+            const eurPlnRate = marketData?.eurPlnRate || 4.25;
+            const bondsEur = bondPosition ? bondPosition.amountPln / eurPlnRate : 0;
+            const etfValue = portfolio?.totalValueEur || 0;
+            const totalPortfolio = bondsEur + etfValue;
+
+            const currentBondsPct = totalPortfolio > 0 ? (bondsEur / totalPortfolio) * 100 : 0;
+            const currentRiskyPct = totalPortfolio > 0 ? (etfValue / totalPortfolio) * 100 : 0;
+
+            // Target from CRRA: risky = 1/γ, bonds = 1 - 1/γ
+            const targetRiskyPct = crra ? Math.min(100, (1 / crra) * 100) : 50;
+            const targetBondsPct = 100 - targetRiskyPct;
+
+            const bondsGap = targetBondsPct - currentBondsPct;
+            const riskyGap = targetRiskyPct - currentRiskyPct;
+
+            // Determine recommendation
+            let recommendation = '';
+            let recommendationType: 'bonds' | 'etfs' | 'balanced' = 'balanced';
+            if (Math.abs(bondsGap) <= 5) {
+              recommendation = 'Your portfolio is well-balanced between bonds and risky assets.';
+              recommendationType = 'balanced';
+            } else if (bondsGap > 5) {
+              recommendation = `You're underweight in bonds by ${bondsGap.toFixed(0)}%. Consider adding to your bond position.`;
+              recommendationType = 'bonds';
+            } else {
+              recommendation = `You're underweight in risky assets by ${riskyGap.toFixed(0)}%. Focus contributions on ETFs.`;
+              recommendationType = 'etfs';
+            }
+
+            return (
+              <div className="card">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Portfolio Summary</h3>
+
+                {/* Total Value */}
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="text-sm text-gray-500">Total Portfolio Value</div>
+                  <div className="text-2xl font-bold">€{totalPortfolio.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Bonds: €{bondsEur.toLocaleString(undefined, { maximumFractionDigits: 0 })} + ETFs: €{etfValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+
+                {/* Current vs Target Split */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Current Allocation</div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                        <span className="text-sm">Bonds: {currentBondsPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded"></div>
+                        <span className="text-sm">Risky: {currentRiskyPct.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Target (CRRA={crra?.toFixed(1)})</div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                        <span className="text-sm">Bonds: {targetBondsPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded"></div>
+                        <span className="text-sm">Risky: {targetRiskyPct.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Visual comparison bar */}
+                <div className="mb-4">
+                  <div className="text-xs text-gray-500 mb-1">Current</div>
+                  <div className="h-4 bg-gray-100 rounded-full overflow-hidden flex">
+                    <div className="bg-blue-500 h-full" style={{ width: `${currentBondsPct}%` }}></div>
+                    <div className="bg-green-500 h-full" style={{ width: `${currentRiskyPct}%` }}></div>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-1 mt-2">Target</div>
+                  <div className="h-4 bg-gray-100 rounded-full overflow-hidden flex">
+                    <div className="bg-blue-500 h-full" style={{ width: `${targetBondsPct}%` }}></div>
+                    <div className="bg-green-500 h-full" style={{ width: `${targetRiskyPct}%` }}></div>
+                  </div>
+                </div>
+
+                {/* Recommendation */}
+                <div className={`p-3 rounded-lg text-sm ${
+                  recommendationType === 'balanced' ? 'bg-green-50 text-green-700' :
+                  recommendationType === 'bonds' ? 'bg-blue-50 text-blue-700' :
+                  'bg-amber-50 text-amber-700'
+                }`}>
+                  <strong>Recommendation:</strong> {recommendation}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Optimal Weights (within risky portfolio) */}
           <div className="card">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Optimal Weights</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Optimal Weights <span className="text-sm font-normal text-gray-500">(within risky assets)</span></h3>
             <div className="space-y-3">
               {Object.entries(optimizationResult.optimalWeights)
                 .sort(([, a], [, b]) => b - a)
