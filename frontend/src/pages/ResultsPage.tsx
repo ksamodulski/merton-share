@@ -23,6 +23,17 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rebalanceCheck, setRebalanceCheck] = useState<RebalanceCheck | null>(null);
+  const [postAllocationPreview, setPostAllocationPreview] = useState<Array<{
+    ticker: string;
+    current_eur: number;
+    current_pct: number;
+    amount_added: number;
+    new_eur: number;
+    new_pct: number;
+    pct_change: number;
+    target_pct: number;
+    gap_after: number;
+  }> | null>(null);
 
   const runOptimization = async () => {
     if (!portfolio || !crra || !marketData) {
@@ -201,6 +212,11 @@ export default function ResultsPage() {
             rationale: r.rationale,
           }))
         );
+
+        // Store post-allocation preview
+        setPostAllocationPreview(allocResult.post_allocation_preview);
+      } else {
+        setPostAllocationPreview(null);
       }
 
       markStepComplete('results');
@@ -452,6 +468,68 @@ export default function ResultsPage() {
                   ? 'Portfolio is well-balanced. No specific allocation recommendations.'
                   : 'Enter a contribution amount to see allocation recommendations.'}
               </p>
+            )}
+
+            {/* Post-Allocation Preview */}
+            {postAllocationPreview && postAllocationPreview.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-md font-medium text-gray-900 mb-3">
+                  Portfolio After Contribution
+                </h4>
+                <p className="text-sm text-gray-500 mb-3">
+                  How your portfolio will look after adding €{contributionAmount.toLocaleString()}
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Region</th>
+                        <th className="px-3 py-2 text-right">Current</th>
+                        <th className="px-3 py-2 text-center">Add</th>
+                        <th className="px-3 py-2 text-right">After</th>
+                        <th className="px-3 py-2 text-right">Target</th>
+                        <th className="px-3 py-2 text-right">Gap</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {postAllocationPreview.map((pos) => (
+                        <tr key={pos.ticker}>
+                          <td className="px-3 py-2 font-medium">{pos.ticker}</td>
+                          <td className="px-3 py-2 text-right">
+                            <div>{pos.current_pct.toFixed(1)}%</div>
+                            <div className="text-xs text-gray-400">€{pos.current_eur.toLocaleString()}</div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {pos.amount_added > 0 ? (
+                              <span className="text-green-600 font-medium">
+                                +€{pos.amount_added.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className={pos.pct_change > 0 ? 'text-green-600' : pos.pct_change < -3 ? 'text-amber-600' : ''}>
+                              {pos.new_pct.toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-gray-400">€{pos.new_eur.toLocaleString()}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right">{pos.target_pct.toFixed(1)}%</td>
+                          <td className={`px-3 py-2 text-right font-medium ${
+                            Math.abs(pos.gap_after) <= 2 ? 'text-green-600' :
+                            pos.gap_after > 0 ? 'text-amber-600' : 'text-red-600'
+                          }`}>
+                            {pos.gap_after > 0 ? '+' : ''}{pos.gap_after.toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Green gap = on target. Yellow = still underweight. Red = still overweight.
+                </p>
+              </div>
             )}
           </div>
         </>

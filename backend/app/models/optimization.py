@@ -123,12 +123,29 @@ class AllocationRequest(BaseModel):
     min_allocation: float = Field(500.0, description="Minimum allocation per ETF (EUR)")
 
 
+class PostAllocationPosition(BaseModel):
+    """Single position in post-allocation preview."""
+
+    ticker: str
+    current_eur: float = Field(..., description="Current EUR value")
+    current_pct: float = Field(..., description="Current allocation (%)")
+    amount_added: float = Field(..., description="EUR added (0 if not buying)")
+    new_eur: float = Field(..., description="New EUR value after allocation")
+    new_pct: float = Field(..., description="New allocation (%) after contribution")
+    pct_change: float = Field(..., description="Change in % (new - current)")
+    target_pct: float = Field(..., description="Target allocation (%)")
+    gap_after: float = Field(..., description="Remaining gap (target - new)")
+
+
 class AllocationResponse(BaseModel):
     """Response with allocation recommendations."""
 
     total_contribution: float
     recommendations: List[AllocationRecommendation]
     unallocated: float = Field(0.0, description="Amount not allocated")
+    post_allocation_preview: List[PostAllocationPosition] = Field(
+        default_factory=list, description="Preview of all positions after allocation"
+    )
 
 
 class RebalanceCheckRequest(BaseModel):

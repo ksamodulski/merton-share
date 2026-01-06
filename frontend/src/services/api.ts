@@ -120,6 +120,17 @@ export const optimizeApi = {
         rationale: string;
       }>;
       unallocated: number;
+      post_allocation_preview: Array<{
+        ticker: string;
+        current_eur: number;
+        current_pct: number;
+        amount_added: number;
+        new_eur: number;
+        new_pct: number;
+        pct_change: number;
+        target_pct: number;
+        gap_after: number;
+      }>;
     }>('/optimize/allocate', {
       method: 'POST',
       body: JSON.stringify(data),

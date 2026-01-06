@@ -13,6 +13,7 @@ from app.models.optimization import (
     AllocationRequest,
     AllocationResponse,
     AllocationRecommendation,
+    PostAllocationPosition,
     RebalanceCheckRequest,
     RebalanceResponse,
     SellRecommendation,
@@ -172,22 +173,21 @@ async def calculate_allocation(request: AllocationRequest) -> AllocationResponse
     current_value = request.current_portfolio_value
     future_value = current_value + contribution
 
-    # Get priority assets (underweight positions worth buying)
-    priority_assets = request.gap_analysis.high_priority + request.gap_analysis.medium_priority
-
-    if not priority_assets:
-        return AllocationResponse(
-            total_contribution=contribution,
-            recommendations=[],
-            unallocated=contribution,
-        )
-
-    # Calculate EUR gap for each priority asset
-    # EUR gap = (target% * future_value) - (current% * current_value)
+    # Calculate EUR gap for each asset based on FUTURE position after contribution
+    # Key insight: An asset that's overweight NOW may become underweight AFTER
+    # the contribution dilutes its percentage (if no money is added to it)
+    #
+    # Example: EM at 28.8% of €17k = €4,896
+    #          After €20k contribution: €4,896 / €37k = 13.2%
+    #          If target is 24%, EM is now UNDERWEIGHT and needs money
     eur_gaps = {}
     for row in request.gap_analysis.rows:
-        if row.ticker in priority_assets and row.gap > 0:  # Only underweight
-            current_eur = (row.current_pct / 100) * current_value
+        current_eur = (row.current_pct / 100) * current_value
+        # What % will this be if we add nothing to it?
+        future_pct_if_no_addition = (current_eur / future_value) * 100
+
+        # Will this asset be underweight after contribution (if we add nothing)?
+        if future_pct_if_no_addition < row.target_pct:
             target_eur = (row.target_pct / 100) * future_value
             eur_needed = target_eur - current_eur
             if eur_needed > 0:
@@ -288,10 +288,36 @@ async def calculate_allocation(request: AllocationRequest) -> AllocationResponse
     # Sort by amount (largest first)
     recommendations.sort(key=lambda r: r.amount_eur, reverse=True)
 
+    # Build post-allocation preview for ALL positions
+    preview = []
+    for row in request.gap_analysis.rows:
+        current_eur = (row.current_pct / 100) * current_value
+        amount_added = allocations.get(row.ticker, 0)
+        new_eur = current_eur + amount_added
+        new_pct = (new_eur / future_value) * 100 if future_value > 0 else 0
+
+        preview.append(
+            PostAllocationPosition(
+                ticker=row.ticker,
+                current_eur=round(current_eur, 2),
+                current_pct=row.current_pct,
+                amount_added=amount_added,
+                new_eur=round(new_eur, 2),
+                new_pct=round(new_pct, 2),
+                pct_change=round(new_pct - row.current_pct, 2),
+                target_pct=row.target_pct,
+                gap_after=round(row.target_pct - new_pct, 2),
+            )
+        )
+
+    # Sort preview by gap_after (most underweight first)
+    preview.sort(key=lambda p: p.gap_after, reverse=True)
+
     return AllocationResponse(
         total_contribution=contribution,
         recommendations=recommendations,
         unallocated=remaining,
+        post_allocation_preview=preview,
     )
 
 
