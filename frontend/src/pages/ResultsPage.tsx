@@ -3,6 +3,16 @@ import { useAppStore } from '../store';
 import { optimizeApi } from '../services/api';
 import type { RebalanceCheck } from '../types';
 
+// Realistic default correlations based on historical data (10-year rolling)
+// Key: Japan has lower correlation (0.55-0.65), US-Europe highly correlated (0.85)
+const DEFAULT_CORRELATIONS: Record<string, Record<string, number>> = {
+  US:     { US: 1.00, Europe: 0.85, Japan: 0.65, EM: 0.70, Gold: 0.05 },
+  Europe: { US: 0.85, Europe: 1.00, Japan: 0.60, EM: 0.65, Gold: 0.10 },
+  Japan:  { US: 0.65, Europe: 0.60, Japan: 1.00, EM: 0.55, Gold: 0.05 },
+  EM:     { US: 0.70, Europe: 0.65, Japan: 0.55, EM: 1.00, Gold: 0.15 },
+  Gold:   { US: 0.05, Europe: 0.10, Japan: 0.05, EM: 0.15, Gold: 1.00 },
+};
+
 export default function ResultsPage() {
   const {
     portfolio,
@@ -68,7 +78,7 @@ export default function ResultsPage() {
         return vol?.realizedVol1Y || vol?.impliedVol || 0.18;
       });
 
-      // Use correlation matrix from Claude if available, otherwise use defaults
+      // Use correlation matrix from Claude if available, otherwise use realistic defaults
       let correlationMatrix: number[][];
       if (marketData.correlations?.matrix) {
         // Reorder to match our regions order if needed
@@ -81,20 +91,14 @@ export default function ResultsPage() {
             if (idx1 >= 0 && idx2 >= 0) {
               return marketData.correlations!.matrix[idx1][idx2];
             }
-            // Default correlations
-            if (r1 === 'Gold' || r2 === 'Gold') return 0.1;
-            return 0.6;
+            // Fallback to realistic defaults if asset not found
+            return DEFAULT_CORRELATIONS[r1]?.[r2] ?? 0.5;
           })
         );
       } else {
-        // Default correlation matrix
-        const n = regions.length;
-        correlationMatrix = Array(n).fill(null).map((_, i) =>
-          Array(n).fill(null).map((_, j) => {
-            if (i === j) return 1;
-            if (regions[i] === 'Gold' || regions[j] === 'Gold') return 0.1;
-            return 0.6;
-          })
+        // Use realistic default correlation matrix
+        correlationMatrix = regions.map((r1) =>
+          regions.map((r2) => DEFAULT_CORRELATIONS[r1]?.[r2] ?? (r1 === r2 ? 1 : 0.5))
         );
       }
 
