@@ -50,22 +50,29 @@ class ClaudeService:
 
     async def gather_market_data(self) -> dict:
         """
-        Gather current market data using Claude's knowledge.
+        Gather current market data: live numbers from yfinance, qualitative from Claude.
 
         Returns:
             Dictionary with valuations, volatility, institutional_views, rates
         """
+        import asyncio
         from datetime import date
+        from app.services.yfinance_service import fetch_market_snapshot, format_snapshot_for_prompt
 
         today = date.today().isoformat()
 
-        # Load prompt from configurable file
+        # Fetch live market data in a thread (yfinance is synchronous)
+        snapshot = await asyncio.to_thread(fetch_market_snapshot)
+        live_data_block = format_snapshot_for_prompt(snapshot)
+
+        # Build prompt
         prompt_template = load_prompt("market_data")
-        prompt = prompt_template.format(today=today)
+        prompt = prompt_template.format(today=today, live_data_block=live_data_block)
 
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=8192,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 7}],
             messages=[
                 {
                     "role": "user",
@@ -74,7 +81,15 @@ class ClaudeService:
             ],
         )
 
-        return self._extract_json(message.content[0].text)
+        # With web search the response contains server_tool_use / web_search_tool_result
+        # blocks before the final text block — find the last text block.
+        text = next(
+            (block.text for block in reversed(message.content) if block.type == "text"),
+            None,
+        )
+        if text is None:
+            raise ValueError("No text block found in Claude response")
+        return self._extract_json(text)
 
     async def lookup_etf_metadata(self, tickers: List[str]) -> List[dict]:
         """

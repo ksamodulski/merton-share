@@ -38,9 +38,10 @@ Retail investors face several challenges:
 ### FR3: ETF Identification
 - **FR3.1**: System identifies ETF details using AI (Claude)
 - **FR3.2**: For each ticker, system determines: region, full name, ISIN, TER, accumulating status
-- **FR3.3**: Supported regions: US, Europe, Japan, EM (Emerging Markets), Gold
+- **FR3.3**: Supported regions: US, Europe (incl. UK), Japan, EM (incl. MSCI Pacific ex Japan), Gold
 - **FR3.4**: User can manually override any identified region
 - **FR3.5**: System validates ETFs against constraints (accumulating, EUR, UCITS, TER < 0.50%)
+- **FR3.6**: System maintains a hardcoded override table for known IBKR/XETRA tickers that Claude may misclassify (e.g. SPYF → Europe, SXR1 → EM); these bypass Claude lookup
 
 ### FR4: Risk Profile Assessment
 - **FR4.1**: User completes 4-question CRRA survey to determine risk aversion coefficient
@@ -49,12 +50,12 @@ Retail investors face several challenges:
 - **FR4.4**: CRRA value determines optimal risky/safe asset split via formula: risky = 1/γ
 
 ### FR5: Market Data Gathering
-- **FR5.1**: System fetches current market data via Claude AI
-- **FR5.2**: Data includes: valuations (CAPE, P/E), volatility, dividend yields, institutional views
+- **FR5.1**: System fetches live market data via yfinance (VIX, realized vols, P/E ratios, FX rates) then enriches with Claude web search
+- **FR5.2**: Data includes: valuations (CAPE, P/E), volatility, dividend yields, institutional views with confidence level (high/medium/low), expected returns
 - **FR5.3**: System provides correlation matrix for asset classes
 - **FR5.4**: Data is cached to avoid repeated API calls
 - **FR5.5**: User can force refresh to get latest data
-- **FR5.6**: System shows warning if using default correlations
+- **FR5.6**: Institutional view adjustments are applied to expected returns server-side, scaled by confidence level (high: ±2%, medium: ±1.5%, low: ±1%)
 
 ### FR6: Portfolio Optimization
 - **FR6.1**: System calculates optimal weights using Merton's CRRA utility optimization

@@ -128,11 +128,12 @@ Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Yo
 - Higher γ → more conservative allocation
 
 ### Step 4: Market Data
-Fetch current market data via Claude:
+Fetch current market data via Claude (live yfinance numbers + web search):
 - Valuations (CAPE, Forward P/E) by region
-- Volatility estimates
+- Volatility estimates (VIX, VSTOXX, realized vols from yfinance)
 - Correlation matrix (10-year historical defaults)
-- Institutional views (overweight/neutral/underweight)
+- Institutional views (overweight/neutral/underweight) with confidence level
+- Expected returns = CAPE-based baseline + confidence-scaled view adjustment
 
 ### Step 5: Results
 View your personalized results:
@@ -215,10 +216,12 @@ The app validates ETF holdings against these requirements:
 | Region | Description | Examples |
 |--------|-------------|----------|
 | US | S&P 500, NASDAQ, US total market | CSPX, VUAA |
-| Europe | MSCI Europe, Stoxx 600 | MEUD, SXR1 |
+| Europe | MSCI Europe, Stoxx 600, UK equities | MEUD, SPYF |
 | Japan | MSCI Japan, Nikkei, TOPIX | IJPA |
-| EM | MSCI Emerging Markets | IEMA |
+| EM | MSCI Emerging Markets; also MSCI Pacific ex Japan | IEMA, SXR1 |
 | Gold | Gold ETFs, precious metals | 4GLD |
+
+> **Note on IBKR XETRA tickers:** Several IBKR tickers differ from their underlying exposure. SPYF (SPDR FTSE UK All Share, XETRA) → Europe. SXR1 (iShares MSCI Pacific ex Japan, XETRA) → EM (closest fit in the 5-region model). These are pre-seeded in the ETF lookup cache so Claude is not consulted for them.
 
 > **Note on Gold:** Gold is included primarily for diversification benefits (low correlation with equities) rather than expected returns. Its expected return is estimated by Claude based on historical trends and market conditions.
 

@@ -11,12 +11,15 @@ from app.models.market_data import (
     Valuation,
     Volatility,
     InstitutionalView,
+    ExpectedReturn,
+    CorrelationMatrix,
     ValuationSignal,
     DEFAULT_THRESHOLDS,
     DEFAULT_VOLATILITIES,
     DEFAULT_DIVIDEND_YIELDS,
 )
 from app.services.claude_service import get_claude_service
+from app.core.view_mapping import apply_view_adjustments
 
 router = APIRouter()
 
@@ -80,14 +83,58 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
                 stance=v.get("stance", "neutral"),
                 sources=v.get("sources", ["Claude"]),
                 key_drivers=v.get("key_drivers", []),
+                confidence=v.get("confidence"),
             )
             for v in result.get("institutional_views", [])
         ]
+
+        # Build dicts for view adjustment lookup
+        inst_stances = {v.region: v.stance for v in institutional_views}
+        inst_confidence = {v.region: v.confidence for v in institutional_views}
+
+        # Parse expected returns from Claude and apply confidence-scaled view adjustments
+        raw_returns = result.get("expected_returns", [])
+        expected_returns = None
+        if raw_returns:
+            base_returns = {r["region"]: r.get("return", 0.05) for r in raw_returns}
+            view_adjustments = apply_view_adjustments(
+                base_returns=base_returns,
+                institutional_views=inst_stances,
+                confidence=inst_confidence,
+                enabled=True,
+            )
+            expected_returns = []
+            for r in raw_returns:
+                region = r["region"]
+                adj = view_adjustments.get(region)
+                adjusted_value = adj.adjusted_return if adj else r.get("return", 0.05)
+                rationale = r.get("rationale", "")
+                if adj and adj.adjustment != 0:
+                    rationale += f" + view adj {adj.adjustment:+.1%} ({adj.rationale})"
+                expected_returns.append(
+                    ExpectedReturn.model_validate({
+                        "region": region,
+                        "return": adjusted_value,
+                        "rationale": rationale,
+                        "confidence": r.get("confidence"),
+                    })
+                )
+
+        # Parse correlation matrix if provided
+        correlations_raw = result.get("correlations")
+        correlations = None
+        if correlations_raw and "assets" in correlations_raw and "matrix" in correlations_raw:
+            correlations = CorrelationMatrix(
+                assets=correlations_raw["assets"],
+                matrix=correlations_raw["matrix"],
+            )
 
         market_data = MarketData(
             valuations=valuations,
             volatility=volatility,
             institutional_views=institutional_views,
+            expected_returns=expected_returns,
+            correlations=correlations,
             risk_free_rate=result.get("risk_free_rate", 0.025),
             eur_pln_rate=result.get("eur_pln_rate", 4.30),
             fetched_at=datetime.utcnow(),

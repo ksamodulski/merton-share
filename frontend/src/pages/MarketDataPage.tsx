@@ -13,6 +13,8 @@ export default function MarketDataPage() {
     marketDataLoading,
   } = useAppStore();
   const [error, setError] = useState<string | null>(null);
+  const [rawData, setRawData] = useState<unknown>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   const handleFetchMarketData = async () => {
     setError(null);
@@ -31,6 +33,7 @@ export default function MarketDataPage() {
       }
 
       const data = await response.json();
+      setRawData(data);
 
       // Convert to frontend format
       const marketData: MarketData = {
@@ -53,6 +56,7 @@ export default function MarketDataPage() {
           stance: v.stance,
           sources: v.sources,
           keyDrivers: v.key_drivers,
+          confidence: v.confidence as 'high' | 'medium' | 'low' | undefined,
         })),
         expectedReturns: data.expected_returns?.map((r: Record<string, unknown>) => ({
           region: r.region,
@@ -110,7 +114,7 @@ export default function MarketDataPage() {
                 Fetching with Claude...
               </span>
             ) : (
-              'Fetch Live Data'
+              'Fetch Data'
             )}
           </button>
         </div>
@@ -195,6 +199,7 @@ export default function MarketDataPage() {
                     <tr>
                       <th className="px-4 py-2 text-left">Region</th>
                       <th className="px-4 py-2 text-center">Stance</th>
+                      <th className="px-4 py-2 text-center">Conf</th>
                       <th className="px-4 py-2 text-left">Sources</th>
                       <th className="px-4 py-2 text-left">Key Drivers</th>
                     </tr>
@@ -214,6 +219,19 @@ export default function MarketDataPage() {
                             }`}
                           >
                             {v.stance}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <span
+                            className={`px-2 py-1 rounded text-xs ${
+                              v.confidence === 'high'
+                                ? 'bg-blue-50 text-blue-600'
+                                : v.confidence === 'medium'
+                                ? 'bg-gray-50 text-gray-500'
+                                : 'text-gray-400'
+                            }`}
+                          >
+                            {v.confidence ?? 'low'}
                           </span>
                         </td>
                         <td className="px-4 py-2 text-gray-500 text-xs">
@@ -289,16 +307,24 @@ export default function MarketDataPage() {
             </div>
 
             {/* Rates */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">Risk-Free Rate</div>
+                <div className="text-sm text-gray-500">ECB Rate (risk-free)</div>
                 <div className="text-xl font-semibold">
-                  {(marketData.riskFreeRate * 100).toFixed(1)}%
+                  {(marketData.riskFreeRate * 100).toFixed(2)}%
                 </div>
               </div>
+              {(rawData as Record<string, unknown>)?.bund_yield_10y && (
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="text-sm text-gray-500">German 10Y Bund</div>
+                  <div className="text-xl font-semibold">
+                    {(((rawData as Record<string, unknown>).bund_yield_10y as number) * 100).toFixed(2)}%
+                  </div>
+                </div>
+              )}
               <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500">EUR/PLN Rate</div>
-                <div className="text-xl font-semibold">{marketData.eurPlnRate.toFixed(2)}</div>
+                <div className="text-sm text-gray-500">EUR/PLN</div>
+                <div className="text-xl font-semibold">{marketData.eurPlnRate.toFixed(4)}</div>
               </div>
             </div>
 
@@ -306,6 +332,23 @@ export default function MarketDataPage() {
             <div className="text-xs text-gray-400 text-center">
               Data fetched: {new Date(marketData.fetchedAt).toLocaleString()}
             </div>
+
+            {/* Raw JSON */}
+            {rawData && (
+              <div>
+                <button
+                  onClick={() => setShowRaw((v) => !v)}
+                  className="text-xs text-blue-500 hover:underline"
+                >
+                  {showRaw ? 'Hide raw response' : 'Show raw response'}
+                </button>
+                {showRaw && (
+                  <pre className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs overflow-auto max-h-96">
+                    {JSON.stringify(rawData, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

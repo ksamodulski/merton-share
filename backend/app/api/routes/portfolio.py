@@ -21,8 +21,36 @@ from app.services.claude_service import get_claude_service
 
 router = APIRouter()
 
-# In-memory cache for ETF mappings (persists during server lifetime)
-_etf_mappings_cache: Dict[str, ETFMetadata] = {}
+# Known IBKR/XETRA ticker overrides — Claude doesn't always know these obscure symbols.
+# Keys are IBKR ticker symbols as they appear in the IBKR CSV export.
+_KNOWN_TICKERS: Dict[str, ETFMetadata] = {
+    # SPDR FTSE UK All Share ETF (XETRA: SPYF) — IE00B7452L46
+    "SPYF": ETFMetadata(
+        ticker="SPYF",
+        region="Europe",
+        name="SPDR FTSE UK All Share ETF",
+        isin="IE00B7452L46",
+        ter=0.0020,
+        is_accumulating=False,
+        description="Tracks the FTSE UK All Share Index (UK equities)",
+    ),
+    # iShares Core MSCI Pacific ex Japan UCITS ETF (XETRA: SXR1) — IE00B52MJY50
+    # Developed Pacific: Australia, Hong Kong, Singapore, NZ — classified as EM
+    # (closest fit in the 5-region US/Europe/Japan/EM/Gold model)
+    "SXR1": ETFMetadata(
+        ticker="SXR1",
+        region="EM",
+        name="iShares Core MSCI Pacific ex Japan UCITS ETF",
+        isin="IE00B52MJY50",
+        ter=0.0020,
+        is_accumulating=True,
+        description="Tracks MSCI Pacific ex Japan (Australia, HK, Singapore, NZ)",
+    ),
+}
+
+# In-memory cache for ETF mappings (persists during server lifetime).
+# Pre-seeded with known IBKR tickers so Claude lookup is skipped for these.
+_etf_mappings_cache: Dict[str, ETFMetadata] = dict(_KNOWN_TICKERS)
 
 
 @router.post("", response_model=Portfolio)

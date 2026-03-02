@@ -89,7 +89,24 @@
                                               └──────────┘
 ```
 
-### 2. Optimization Flow
+### 2. Market Data Flow
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────────────────┐    ┌──────────┐
+│ Frontend │    │ yfinance │    │   Claude + web search │    │ Frontend │
+│ requests │───▶│ snapshot │───▶│   enriches with CAPE, │───▶│ displays │
+│  /gather │    │ (live)   │    │   views, rates, news  │    │  data    │
+└──────────┘    └──────────┘    └──────────────────────┘    └──────────┘
+                                           │
+                                           ▼
+                              ┌────────────────────────┐
+                              │  view_mapping.py       │
+                              │  adjusts expected      │
+                              │  returns by confidence │
+                              └────────────────────────┘
+```
+
+### 3. Optimization Flow
 
 ```
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
@@ -101,8 +118,8 @@
                                      ▼               ▼               ▼
                               ┌──────────┐    ┌──────────┐    ┌──────────┐
                               │ Returns  │    │ Optimal  │    │ Current  │
-                              │ Volatility│   │ Weights  │    │ vs Target│
-                              │ Correlat.│    │ per region│   │   gaps   │
+                              │ (view-   │    │ Weights  │    │ vs Target│
+                              │ adjusted)│    │ per region│   │   gaps   │
                               └──────────┘    └──────────┘    └──────────┘
 ```
 
@@ -169,9 +186,23 @@ max E[U(W)] = max [μ_p - (γ/2)σ_p²]
 ```
 
 Where:
-- μ_p = portfolio expected return
-- σ_p = portfolio volatility
+- μ_p = portfolio expected return (CAPE-based + confidence-scaled view adjustment)
+- σ_p = portfolio volatility (from yfinance realized vols + VIX)
 - γ = risk aversion coefficient
+
+#### View Mapping (`view_mapping.py`)
+
+Applies confidence-scaled institutional view adjustments to CAPE-based expected returns before optimization:
+
+```
+adjustment = BASE_VIEW_ADJUSTMENT[stance] × CONFIDENCE_SCALE[confidence]
+```
+
+- `high` confidence (web-searched): ±2.0%
+- `medium` confidence (derived data): ±1.5%
+- `low` / no confidence (Claude estimate): ±1.0%
+
+Applied in `market_data.py` when assembling the market data response, so adjusted expected returns are returned directly to the frontend.
 
 #### CRRA Survey (`crra_survey.py`)
 
@@ -180,6 +211,16 @@ Estimates γ from 4 behavioral questions:
 2. Portfolio risk percentage willing to take
 3. Preferred stock allocation
 4. Lottery choice (certainty equivalent)
+
+#### yfinance Service (`yfinance_service.py`)
+
+Fetches live market data at request time:
+- VIX (`^VIX`) and VSTOXX (`^V2TX`) for implied volatility
+- 1-year realized volatility from daily returns of SPY, VGK, EWJ, EEM, GLD
+- Trailing P/E ratios for regional ETF proxies
+- EUR/PLN exchange rate (`EURPLN=X`)
+
+Results are formatted into a text block injected into the Claude market data prompt, so Claude uses exact live numbers rather than estimates.
 
 ## State Management
 

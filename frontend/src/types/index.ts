@@ -80,6 +80,7 @@ export interface InstitutionalView {
   stance: 'overweight' | 'neutral' | 'underweight';
   sources: string[];
   keyDrivers: string[];
+  confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface ExpectedReturn {

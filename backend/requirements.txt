@@ -9,6 +9,7 @@ pandas>=2.0.0
 httpx>=0.26.0
 python-dotenv>=1.0.0
 scipy
+yfinance>=0.2.40
 
 # Testing
 pytest>=8.0.0

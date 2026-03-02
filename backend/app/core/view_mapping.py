@@ -37,14 +37,26 @@ class ViewAdjustment:
     adjusted_return: float
     sources: list[str]
     rationale: str
+    confidence: Optional[str] = None  # high/medium/low confidence of the view
 
 
-# Mapping from institutional stance to return adjustment (in decimal)
-# These are additive adjustments to the base expected return
-INSTITUTIONAL_VIEW_ADJUSTMENT = {
-    "overweight": +0.01,    # +1% return premium
-    "neutral": 0.0,         # No adjustment
-    "underweight": -0.01,   # -1% return penalty
+# Scale factor applied to the base adjustment depending on confidence.
+# "high"   → web-searched, breaking news  → full ±2%
+# "medium" → recent reports or derived    → ±1.5%
+# "low"    → pure Claude estimate         → ±1%
+# None     → treated the same as "low"
+CONFIDENCE_SCALE: Dict[Optional[str], float] = {
+    "high":   1.0,
+    "medium": 0.75,
+    "low":    0.5,
+    None:     0.5,
+}
+
+# Base adjustments before scaling by confidence (in decimal)
+BASE_VIEW_ADJUSTMENT: Dict[str, float] = {
+    "overweight":  +0.02,   # up to +2% return premium
+    "neutral":      0.0,
+    "underweight": -0.02,   # up to -2% return penalty
 }
 
 # Optional: Valuation signal adjustments (smaller magnitude)
@@ -59,6 +71,7 @@ def apply_view_adjustments(
     base_returns: Dict[str, float],
     institutional_views: Optional[Dict[str, str]] = None,
     valuation_signals: Optional[Dict[str, str]] = None,
+    confidence: Optional[Dict[str, Optional[str]]] = None,
     enabled: bool = False,
 ) -> Dict[str, ViewAdjustment]:
     """
@@ -66,12 +79,17 @@ def apply_view_adjustments(
 
     This function implements a simplified Black-Litterman approach where
     institutional views and valuation signals are converted to numeric
-    adjustments on expected returns.
+    adjustments on expected returns. The adjustment magnitude is scaled
+    by the confidence level of each view:
+      - high   (web-searched breaking news) → ±2.0%
+      - medium (recent reports / derived)   → ±1.5%
+      - low    (pure Claude estimate)       → ±1.0%
 
     Args:
         base_returns: Dict of region -> base expected return (decimal)
         institutional_views: Dict of region -> stance (overweight/neutral/underweight)
         valuation_signals: Dict of region -> signal (favorable/neutral/cautious)
+        confidence: Dict of region -> confidence level (high/medium/low/None)
         enabled: If False, returns base returns without adjustment
 
     Returns:
@@ -80,11 +98,12 @@ def apply_view_adjustments(
     Example:
         >>> base = {"US": 0.05, "Europe": 0.07}
         >>> views = {"US": "overweight", "Europe": "underweight"}
-        >>> result = apply_view_adjustments(base, views, enabled=True)
+        >>> conf  = {"US": "high", "Europe": "low"}
+        >>> result = apply_view_adjustments(base, views, confidence=conf, enabled=True)
         >>> result["US"].adjusted_return
-        0.06  # 5% + 1% overweight premium
+        0.07   # 5% + 2% (high-confidence overweight)
         >>> result["Europe"].adjusted_return
-        0.06  # 7% - 1% underweight penalty
+        0.06   # 7% - 1% (low-confidence underweight)
     """
     adjustments = {}
 
@@ -93,15 +112,19 @@ def apply_view_adjustments(
         val_adj = 0.0
         rationale_parts = []
         sources = []
+        region_confidence: Optional[str] = None
 
         # Apply institutional view adjustment if enabled
         if enabled and institutional_views and region in institutional_views:
             stance = institutional_views[region]
-            inst_adj = INSTITUTIONAL_VIEW_ADJUSTMENT.get(stance, 0.0)
+            region_confidence = (confidence or {}).get(region)
+            scale = CONFIDENCE_SCALE.get(region_confidence, CONFIDENCE_SCALE[None])
+            inst_adj = BASE_VIEW_ADJUSTMENT.get(stance, 0.0) * scale
             if inst_adj != 0:
+                conf_label = region_confidence or "low"
                 direction = "+" if inst_adj > 0 else ""
                 rationale_parts.append(
-                    f"institutional {stance} ({direction}{inst_adj:.1%})"
+                    f"institutional {stance} (conf:{conf_label}, {direction}{inst_adj:.1%})"
                 )
                 sources.append("Institutional consensus")
 
@@ -130,6 +153,7 @@ def apply_view_adjustments(
             adjusted_return=adjusted_return,
             sources=sources if sources else ["No adjustment applied"],
             rationale=" + ".join(rationale_parts) if rationale_parts else "Base return (no view adjustment)",
+            confidence=region_confidence,
         )
 
     return adjustments
@@ -139,6 +163,7 @@ def get_adjusted_returns(
     base_returns: Dict[str, float],
     institutional_views: Optional[Dict[str, str]] = None,
     valuation_signals: Optional[Dict[str, str]] = None,
+    confidence: Optional[Dict[str, Optional[str]]] = None,
     enabled: bool = False,
 ) -> Dict[str, float]:
     """
@@ -148,6 +173,7 @@ def get_adjusted_returns(
         base_returns: Dict of region -> base expected return
         institutional_views: Dict of region -> stance
         valuation_signals: Dict of region -> signal
+        confidence: Dict of region -> confidence level (high/medium/low/None)
         enabled: If False, returns base returns without adjustment
 
     Returns:
@@ -157,6 +183,7 @@ def get_adjusted_returns(
         base_returns=base_returns,
         institutional_views=institutional_views,
         valuation_signals=valuation_signals,
+        confidence=confidence,
         enabled=enabled,
     )
     return {region: adj.adjusted_return for region, adj in adjustments.items()}

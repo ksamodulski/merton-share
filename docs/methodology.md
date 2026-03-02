@@ -8,22 +8,35 @@ Merton Share implements mean-variance portfolio optimization using a CRRA (Const
 
 ## Expected Returns Estimation
 
-### Primary Method: Claude AI with Web Search
+### Primary Method: Live yfinance + Claude Web Search
 
-Claude AI gathers current market data using web search from authoritative sources:
+Market data is gathered in two layers:
+
+**Layer 1 — Live numbers via yfinance** (fetched at request time):
+
+| Data Point | Source |
+|------------|--------|
+| VIX | `^VIX` via yfinance |
+| VSTOXX | `^V2TX` via yfinance |
+| Realized volatilities | SPY, VGK, EWJ, EEM, GLD 1-year daily returns |
+| Trailing P/E ratios | yfinance `info.trailingPE` |
+| EUR/PLN rate | `EURPLN=X` via yfinance |
+
+**Layer 2 — Qualitative data via Claude web search**:
 
 | Data Point | Primary Sources |
 |------------|-----------------|
 | CAPE Ratios | multpl.com/shiller-pe, Shiller's Yale data |
-| Volatility | VIX (CBOE), VSTOXX (stoxx.com) |
 | ECB Rates | ecb.europa.eu |
+| German Bund yield | web search |
 | Dividend Yields | S&P Global, MSCI |
 | Institutional Views | BlackRock, Vanguard, Goldman Sachs outlook reports |
+| Breaking news | Web search for current geopolitical/macro events |
 
-Each data point includes:
-- Source citation
-- Date of data
-- Confidence level (high/medium/low)
+Each data point includes a `confidence` field:
+- `"high"` — directly web-searched, current data
+- `"medium"` — derived from real data (e.g., CAPE estimated from trailing P/E)
+- `"low"` — pure Claude estimate
 
 ### Expected Returns Formula
 
@@ -154,34 +167,47 @@ max E[U] = μ_p - (γ/2) × σ_p²
 2. **Long-only**: All weights ≥ 0%
 3. **Diversification**: Each weight ≤ 50%
 
-## View Blending (Optional)
+## View Blending
 
 ### Black-Litterman Lite
 
-When enabled (`use_views_in_optimization = True`), institutional views adjust expected returns:
+Institutional views from web-searched sources are applied as confidence-scaled adjustments to CAPE-based expected returns. The adjustment magnitude depends on how reliable the view is:
 
-| Stance | Return Adjustment |
-|--------|-------------------|
-| Overweight | +1.0% |
-| Neutral | 0% |
-| Underweight | -1.0% |
+| Confidence | Source type | Scale | Overweight | Underweight |
+|------------|-------------|-------|------------|-------------|
+| `high` | Web-searched breaking news | ×1.0 | +2.0% | −2.0% |
+| `medium` | Recent institutional reports / derived | ×0.75 | +1.5% | −1.5% |
+| `low` | Pure Claude estimate | ×0.5 | +1.0% | −1.0% |
+| (none) | Treated as low | ×0.5 | +1.0% | −1.0% |
 
-Additionally, valuation signals can add smaller adjustments:
+The `confidence` field is set by Claude in the market data prompt: `"high"` for web-searched values, `"medium"` for estimates from real data, `"low"` for pure estimates.
+
+Valuation signals can add smaller additional adjustments:
 
 | Signal | Return Adjustment |
 |--------|-------------------|
 | Favorable | +0.5% |
 | Neutral | 0% |
-| Cautious | -1.0% |
+| Cautious | −1.0% |
 
 ### Example
 
 If Claude returns:
-- US expected return: 5.0%
-- Institutional view: Overweight
+- US expected return: 5.0% (CAPE-based)
+- Institutional view: Overweight, confidence: **high** (web-searched)
 
-With view blending enabled:
-- Adjusted US return: 5.0% + 1.0% = 6.0%
+Adjusted US return: 5.0% + (2.0% × 1.0) = **7.0%**
+
+If the same view had confidence: **low** (estimate):
+
+Adjusted US return: 5.0% + (2.0% × 0.5) = **6.0%**
+
+### Why Confidence Matters
+
+VIX is already the most direct channel for breaking news — a crisis spikes VIX and the CRRA optimizer automatically cuts equity weights. The institutional view adjustment is a secondary overlay. Scaling it by confidence ensures:
+- A Claude training-data guess gets the same weight as before (±1%)
+- A web-searched breaking-news stance gets double the influence (±2%)
+- The confidence field is never ignored
 
 ## Uncertainty Estimation
 
@@ -235,14 +261,17 @@ Key settings in `backend/app/config.py`:
 
 ```python
 # Methodology settings
-use_views_in_optimization: bool = False  # Enable BL-lite view blending
 expected_return_min: float = -0.05       # -5% lower bound
 expected_return_max: float = 0.15        # +15% upper bound
 default_risk_free_rate: float = 0.025    # 2.5% default ECB rate
+```
 
-# View blending adjustments
-institutional_view_adjustment: float = 0.01  # +/-1% per stance
-valuation_signal_adjustment: float = 0.005   # +/-0.5% per signal
+View adjustment magnitudes are defined in `backend/app/core/view_mapping.py`:
+
+```python
+CONFIDENCE_SCALE = {"high": 1.0, "medium": 0.75, "low": 0.5, None: 0.5}
+BASE_VIEW_ADJUSTMENT = {"overweight": +0.02, "neutral": 0.0, "underweight": -0.02}
+# Effective range: ±1% (low/None) to ±2% (high)
 ```
 
 ## References
