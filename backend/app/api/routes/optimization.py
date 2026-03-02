@@ -51,7 +51,10 @@ async def optimize_portfolio(request: OptimizationRequest) -> OptimizationRespon
                 sharpe_ratio=stats["sharpe_ratio"],
                 crra_utility=stats["crra_utility"],
                 risk_contribution=stats["risk_contribution"],
+                return_confidence_interval=stats.get("return_confidence_interval"),
+                estimation_uncertainty=stats.get("estimation_uncertainty"),
             ),
+            shrunk_expected_returns=result.get("shrunk_expected_returns", {}),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

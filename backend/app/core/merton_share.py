@@ -5,9 +5,32 @@ This module implements mean-variance optimization with CRRA (Constant Relative
 Risk Aversion) utility function. All assets are treated as risky assets.
 """
 
+import logging
 import numpy as np
 from scipy.optimize import minimize
 from typing import Dict, List, Union
+
+logger = logging.getLogger(__name__)
+
+
+def shrink_expected_returns(returns: np.ndarray, phi: float = 0.5) -> np.ndarray:
+    """
+    Apply Bayes-Stein (James-Stein) shrinkage toward the cross-sectional grand mean.
+
+    Jorion (1986): the sample mean is inadmissible for N > 2 assets. Shrinking
+    toward the equal-weight grand mean reduces estimation error by ~30-50%.
+
+    Args:
+        returns: Raw expected return estimates (as decimals)
+        phi: Shrinkage intensity [0, 1]. 0 = no shrinkage, 1 = all assets get
+             the grand mean. Default 0.5 per Jorion (1986) simulation results.
+
+    Returns:
+        Shrunk expected returns: (1 - phi) * returns + phi * grand_mean
+    """
+    grand_mean = float(np.mean(returns))
+    shrunk = (1.0 - phi) * returns + phi * grand_mean
+    return shrunk
 
 
 class PortfolioOptimizer:
@@ -42,7 +65,7 @@ class PortfolioOptimizer:
             ValueError: If inputs are invalid or inconsistent
         """
         self.asset_names = asset_names
-        self.expected_returns = np.array(expected_returns)
+        raw_returns = np.array(expected_returns)
         self.volatilities = np.array(volatilities)
         self.correlation_matrix = np.array(correlation_matrix)
         self.risk_free_rate = risk_free_rate
@@ -50,6 +73,17 @@ class PortfolioOptimizer:
         if crra <= 0:
             raise ValueError("CRRA parameter must be positive")
         self.crra = crra
+
+        # Apply Bayes-Stein shrinkage (Jorion 1986) toward grand mean
+        from app.config import get_settings
+        phi = get_settings().shrinkage_intensity
+        self.expected_returns = shrink_expected_returns(raw_returns, phi=phi)
+        logger.debug(
+            "Expected returns — raw: %s | shrunk (phi=%.2f): %s",
+            [f"{r:.3f}" for r in raw_returns],
+            phi,
+            [f"{r:.3f}" for r in self.expected_returns],
+        )
 
         self._validate_inputs()
 
@@ -266,4 +300,8 @@ class PortfolioOptimizer:
                 for name, weight in zip(self.asset_names, weights)
             },
             "portfolio_stats": stats,
+            "shrunk_expected_returns": {
+                name: float(ret)
+                for name, ret in zip(self.asset_names, self.expected_returns)
+            },
         }

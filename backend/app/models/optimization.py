@@ -65,6 +65,10 @@ class OptimizationResponse(BaseModel):
 
     optimal_weights: Dict[str, float] = Field(..., description="Optimal weights by asset (%)")
     portfolio_stats: PortfolioStats
+    shrunk_expected_returns: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Bayes-Stein shrunk expected returns used in optimization (as decimals)"
+    )
 
 
 class GapAnalysisRow(BaseModel):

@@ -48,6 +48,8 @@ export default function ResultsPage() {
     target_pct: number;
     gap_after: number;
   }> | null>(null);
+  const [shrunkExpectedReturns, setShrunkExpectedReturns] = useState<Record<string, number>>({});
+  const [showReturnDetail, setShowReturnDetail] = useState(false);
 
   // Check for suspicious expected returns before running optimization
   const checkForSuspiciousValues = (): ExpectedReturn[] => {
@@ -90,11 +92,13 @@ export default function ResultsPage() {
         if (expectedReturn) {
           return expectedReturn.return;
         }
-        // Fallback: calculate from CAPE + dividend yield
+        // Fallback: calculate ECY (Excess CAPE Yield) + dividend yield
+        // ECY = (1/CAPE) - real_bund_yield, where real_bund_yield = bund_yield - 2% inflation
         const valuation = marketData.valuations.find((v) => v.region === region);
         if (!valuation) return 0.05;
         const cape = valuation.cape || 20;
-        return 1 / cape + valuation.dividendYield;
+        const realBundYield = (marketData.bundYield10y ?? 0.025) - 0.02;
+        return 1 / cape - realBundYield + valuation.dividendYield;
       });
 
       // Get volatilities from market data
@@ -147,6 +151,7 @@ export default function ResultsPage() {
           estimationUncertainty: result.portfolio_stats.estimation_uncertainty,
         },
       });
+      setShrunkExpectedReturns(result.shrunk_expected_returns ?? {});
 
       // Calculate current allocation using region from ETF metadata
       const currentAllocation: Record<string, number> = {};
@@ -462,6 +467,77 @@ export default function ResultsPage() {
                 ))}
             </div>
           </div>
+
+          {/* Expected Returns Detail (collapsible) */}
+          {Object.keys(shrunkExpectedReturns).length > 0 && optimizationResult && (
+            <div className="card">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Expected Returns Detail</h3>
+                <button
+                  onClick={() => setShowReturnDetail((v) => !v)}
+                  className="text-sm text-primary-600 hover:text-primary-800"
+                >
+                  {showReturnDetail ? 'hide details' : 'show details'}
+                </button>
+              </div>
+              {showReturnDetail && (() => {
+                const regions = Object.keys(optimizationResult.optimalWeights);
+                const weightedSum = regions.reduce((acc, asset) => {
+                  const w = (optimizationResult.optimalWeights[asset] ?? 0) / 100;
+                  const r = shrunkExpectedReturns[asset] ?? 0;
+                  return acc + w * r;
+                }, 0);
+                return (
+                  <div className="mt-4">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left">Asset</th>
+                            <th className="px-4 py-2 text-right">ECY (raw)</th>
+                            <th className="px-4 py-2 text-right">After Shrinkage</th>
+                            <th className="px-4 py-2 text-right">Weight</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {regions.map((asset) => {
+                            const rawReturn = marketData?.expectedReturns?.find((r) => r.region === asset)?.return;
+                            const shrunk = shrunkExpectedReturns[asset];
+                            const weight = optimizationResult.optimalWeights[asset] ?? 0;
+                            return (
+                              <tr key={asset}>
+                                <td className="px-4 py-2 font-medium">{asset}</td>
+                                <td className="px-4 py-2 text-right">
+                                  {rawReturn != null ? `${(rawReturn * 100).toFixed(1)}%` : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  {shrunk != null ? `${(shrunk * 100).toFixed(1)}%` : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-right">{weight.toFixed(1)}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="border-t-2 border-gray-200 bg-gray-50 font-medium">
+                          <tr>
+                            <td className="px-4 py-2">Portfolio</td>
+                            <td className="px-4 py-2 text-right">—</td>
+                            <td className="px-4 py-2 text-right text-green-700">
+                              {(weightedSum * 100).toFixed(1)}% weighted
+                            </td>
+                            <td className="px-4 py-2 text-right">100%</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Shrinkage φ=0.5 per Bayes-Stein (Jorion 1986). Weighted sum of shrunk returns = portfolio expected return above.
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Portfolio Stats */}
           <div className="card">

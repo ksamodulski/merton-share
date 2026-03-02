@@ -167,6 +167,32 @@ max E[U] = μ_p - (γ/2) × σ_p²
 2. **Long-only**: All weights ≥ 0%
 3. **Diversification**: Each weight ≤ 50%
 
+## Bayes-Stein Shrinkage
+
+### Motivation
+
+Sample mean expected returns are an inadmissible estimator for N > 2 assets (Stein 1956, Jorion 1986): shrinking toward the cross-sectional grand mean always reduces mean-squared error. Without shrinkage, the optimizer over-fits to whichever asset has the highest point estimate, producing extreme weights.
+
+### Formula
+
+```
+μ_shrunk = (1 − φ) × μ_raw + φ × μ̄
+```
+
+Where:
+- `μ_raw` = raw expected return vector from Claude (ECY-based)
+- `μ̄` = equal-weight grand mean of all raw returns
+- `φ` = shrinkage intensity (default **0.5**, configurable via `shrinkage_intensity` in `config.py`)
+
+A value of φ = 0.5 blends the raw estimate 50/50 with the grand mean, consistent with Jorion (1986) simulation results.
+
+### Transparency
+
+The Results page exposes both values in an "Expected Returns Detail" table (toggle "show details"):
+- **ECY (raw)** — what Claude returned
+- **After Shrinkage** — what the optimizer actually used
+- The weighted sum of shrunk returns equals the displayed portfolio expected return exactly.
+
 ## View Blending
 
 ### Black-Litterman Lite
@@ -279,3 +305,4 @@ BASE_VIEW_ADJUSTMENT = {"overweight": +0.02, "neutral": 0.0, "underweight": -0.0
 1. Merton, R.C. (1969). "Lifetime Portfolio Selection under Uncertainty: The Continuous-Time Case"
 2. Black, F. & Litterman, R. (1992). "Global Portfolio Optimization"
 3. Campbell, J.Y. & Shiller, R.J. (1998). "Valuation Ratios and the Long-Run Stock Market Outlook"
+4. Jorion, P. (1986). "Bayes-Stein Estimation for Portfolio Analysis" — basis for the φ=0.5 shrinkage toward the grand mean used in this implementation

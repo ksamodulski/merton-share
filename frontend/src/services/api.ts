@@ -66,7 +66,10 @@ export const optimizeApi = {
         sharpe_ratio: number;
         crra_utility: number;
         risk_contribution: Record<string, number>;
+        return_confidence_interval?: [number, number];
+        estimation_uncertainty?: string;
       };
+      shrunk_expected_returns: Record<string, number>;
     }>('/optimize', {
       method: 'POST',
       body: JSON.stringify(data),

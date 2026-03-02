@@ -139,6 +139,7 @@ Fetch current market data via Claude (live yfinance numbers + web search):
 View your personalized results:
 - **Portfolio Summary**: Total value, current vs target risky/bonds split
 - **Optimal Weights**: Target allocation by region
+- **Expected Returns Detail**: Collapsible audit table showing raw ECY return vs Bayes-Stein shrunk return vs weight for each asset; weighted sum is verifiable against the displayed portfolio return
 - **Gap Analysis**: Current vs target with priority signals
 - **Contribution Allocation**: Enter amount to see buy recommendations
 - **Post-Allocation Preview**: How all positions look after contribution
