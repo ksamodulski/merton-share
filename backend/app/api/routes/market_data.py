@@ -136,6 +136,7 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
             expected_returns=expected_returns,
             correlations=correlations,
             risk_free_rate=result.get("risk_free_rate", 0.025),
+            bund_yield_10y=result.get("bund_yield_10y"),
             eur_pln_rate=result.get("eur_pln_rate", 4.30),
             fetched_at=datetime.utcnow(),
             sources=result.get("sources", ["Claude API"]),

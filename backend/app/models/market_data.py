@@ -112,6 +112,7 @@ class MarketData(BaseModel):
     expected_returns: Optional[List[ExpectedReturn]] = Field(None, description="Expected returns by region")
     correlations: Optional[CorrelationMatrix] = Field(None, description="Correlation matrix")
     risk_free_rate: float = Field(..., description="Risk-free rate (as decimal)")
+    bund_yield_10y: Optional[float] = Field(None, description="German 10Y Bund yield (as decimal), used for ECY")
     eur_pln_rate: float = Field(..., description="EUR/PLN exchange rate")
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
     sources: List[str] = Field(default_factory=list)

@@ -104,6 +104,7 @@ export interface MarketData {
   expectedReturns?: ExpectedReturn[];
   correlations?: CorrelationMatrix;
   riskFreeRate: number;
+  bundYield10y?: number;
   eurPlnRate: number;
   fetchedAt: string;
   sources: string[];

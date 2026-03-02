@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     institutional_view_adjustment: float = 0.01  # +/-1% per stance
     valuation_signal_adjustment: float = 0.005   # +/-0.5% per signal
 
+    # Bayes-Stein shrinkage (Jorion 1986) — shrinks μ toward cross-sectional mean
+    # phi=0 means no shrinkage (raw estimates), phi=1 means full equal-weight prior
+    shrinkage_intensity: float = 0.5
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

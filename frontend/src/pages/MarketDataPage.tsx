@@ -68,6 +68,7 @@ export default function MarketDataPage() {
           matrix: data.correlations.matrix,
         } : undefined,
         riskFreeRate: data.risk_free_rate,
+        bundYield10y: data.bund_yield_10y,
         eurPlnRate: data.eur_pln_rate,
         fetchedAt: data.fetched_at,
         sources: data.sources,
@@ -314,11 +315,14 @@ export default function MarketDataPage() {
                   {(marketData.riskFreeRate * 100).toFixed(2)}%
                 </div>
               </div>
-              {(rawData as Record<string, unknown>)?.bund_yield_10y && (
+              {marketData.bundYield10y != null && (
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <div className="text-sm text-gray-500">German 10Y Bund</div>
                   <div className="text-xl font-semibold">
-                    {(((rawData as Record<string, unknown>).bund_yield_10y as number) * 100).toFixed(2)}%
+                    {(marketData.bundYield10y * 100).toFixed(2)}%
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Real yield: {((marketData.bundYield10y - 0.02) * 100).toFixed(2)}%
                   </div>
                 </div>
               )}

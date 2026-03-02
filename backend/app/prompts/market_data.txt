@@ -15,7 +15,7 @@ NOW SEARCH THE WEB for the following — search in this order:
 For CAPE of Europe, Japan, EM — estimate from the trailing P/E values above if no web source found.
 For Forward P/E — estimate from trailing P/E if no web source found.
 For Japan and EM implied vol — estimate as realized vol + 10-20% if no web source found.
-For expected returns — compute using (1/CAPE) + dividend_yield as baseline.
+For expected returns — use ECY (Excess CAPE Yield) as baseline: ECY = (1/CAPE) - (bund_yield_10y - 0.02), then add dividend_yield. The bund_yield_10y is the German 10Y Bund yield found in step 4 (use 0.025 if not yet available). ECY corrects for the rate regime: high CAPE + low real rates = equities still attractive; high CAPE + high real rates = equities genuinely expensive.
 
 RULES:
 - Use every live yfinance value above EXACTLY.
@@ -38,11 +38,11 @@ Return this exact JSON structure with all values filled in:
     {{"asset": "Gold", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "GVZ+GLD/yfinance", "source_date": "{today}", "confidence": "high"}}
   ],
   "expected_returns": [
-    {{"region": "US", "return": 0.0, "rationale": "1/CAPE + div yield", "confidence": "medium"}},
-    {{"region": "Europe", "return": 0.0, "rationale": "1/CAPE + div yield", "confidence": "medium"}},
-    {{"region": "Japan", "return": 0.0, "rationale": "1/CAPE + div yield", "confidence": "medium"}},
-    {{"region": "EM", "return": 0.0, "rationale": "1/CAPE + div yield + EM premium", "confidence": "low"}},
-    {{"region": "Gold", "return": 0.0, "rationale": "0% real + inflation estimate", "confidence": "low"}}
+    {{"region": "US", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "medium"}},
+    {{"region": "Europe", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "medium"}},
+    {{"region": "Japan", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "medium"}},
+    {{"region": "EM", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div+EM prem", "confidence": "low"}},
+    {{"region": "Gold", "return": 0.0, "rationale": "0% real + inflation est", "confidence": "low"}}
   ],
   "institutional_views": [
     {{"region": "US", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}},
