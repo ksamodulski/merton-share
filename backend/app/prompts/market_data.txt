@@ -12,9 +12,10 @@ NOW SEARCH THE WEB for the following — search in this order:
 4. German 10-year Bund yield — search "Germany 10 year bond yield {today}"
 5. Institutional views — use recent BlackRock / Goldman Sachs / Vanguard outlooks as a baseline, then OVERRIDE with any breaking news found in step 1. Note overrides in key_drivers (e.g. "Downgraded from overweight: US-Iran war risk").
 
-For CAPE of Europe, Japan, EM — estimate from the trailing P/E values above if no web source found.
+For CAPE of Europe, Japan, EM, Pacific — estimate from the trailing P/E values above if no web source found.
 For Forward P/E — estimate from trailing P/E if no web source found.
-For Japan and EM implied vol — estimate as realized vol + 10-20% if no web source found.
+For Japan, EM, Pacific implied vol — estimate as realized vol + 10-20% if no web source found.
+Pacific = developed Asia-Pacific ex-Japan (Australia, Hong Kong, Singapore, New Zealand) — treat as a DEVELOPED market (proxy ETF EPP/VPL), NOT emerging.
 For expected returns — use ECY (Excess CAPE Yield) as baseline: ECY = (1/CAPE) - (bund_yield_10y - 0.02), then add dividend_yield. The bund_yield_10y is the German 10Y Bund yield found in step 4 (use 0.025 if not yet available). ECY corrects for the rate regime: high CAPE + low real rates = equities still attractive; high CAPE + high real rates = equities genuinely expensive.
 
 RULES:
@@ -28,13 +29,15 @@ Return this exact JSON structure with all values filled in:
     {{"region": "US", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "multpl.com", "source_date": "{today}", "confidence": "high"}},
     {{"region": "Europe", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "VGK/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
     {{"region": "Japan", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "EWJ/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
-    {{"region": "EM", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "EEM/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}}
+    {{"region": "EM", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "EEM/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
+    {{"region": "Pacific", "cape": 0.0, "forward_pe": 0.0, "dividend_yield": 0.0, "source": "EPP/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}}
   ],
   "volatility": [
     {{"asset": "US", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "VIX+SPY/yfinance", "source_date": "{today}", "confidence": "high"}},
     {{"asset": "Europe", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "VSTOXX+VGK/yfinance", "source_date": "{today}", "confidence": "high"}},
     {{"asset": "Japan", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "EWJ/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
     {{"asset": "EM", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "EEM/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
+    {{"asset": "Pacific", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "EPP/yfinance+estimate", "source_date": "{today}", "confidence": "medium"}},
     {{"asset": "Gold", "implied_vol": 0.0, "realized_vol_1y": 0.0, "source": "GVZ+GLD/yfinance", "source_date": "{today}", "confidence": "high"}}
   ],
   "expected_returns": [
@@ -42,6 +45,7 @@ Return this exact JSON structure with all values filled in:
     {{"region": "Europe", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "medium"}},
     {{"region": "Japan", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "medium"}},
     {{"region": "EM", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div+EM prem", "confidence": "low"}},
+    {{"region": "Pacific", "return": 0.0, "rationale": "ECY=(1/CAPE-real_yield)+div", "confidence": "low"}},
     {{"region": "Gold", "return": 0.0, "rationale": "0% real + inflation est", "confidence": "low"}}
   ],
   "institutional_views": [
@@ -49,6 +53,7 @@ Return this exact JSON structure with all values filled in:
     {{"region": "Europe", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}},
     {{"region": "Japan", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}},
     {{"region": "EM", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}},
+    {{"region": "Pacific", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}},
     {{"region": "Gold", "stance": "neutral", "sources": [""], "key_drivers": [""], "confidence": "high"}}
   ],
   "risk_free_rate": 0.0,

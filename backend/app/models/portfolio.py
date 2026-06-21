@@ -11,7 +11,7 @@ class ETFHolding(BaseModel):
     ticker: str = Field(..., min_length=1, description="ETF ticker symbol")
     isin: Optional[str] = Field(None, description="ISIN identifier")
     name: Optional[str] = Field(None, description="Full ETF name")
-    region: Optional[str] = Field(None, description="Asset region: US, Europe, Japan, EM, Gold")
+    region: Optional[str] = Field(None, description="Asset region: US, Europe, Japan, EM, Pacific, Gold")
     value_eur: float = Field(..., gt=0, description="Current value in EUR")
     percentage: float = Field(
         ..., ge=0, le=100, description="Percentage of portfolio"
@@ -90,7 +90,7 @@ class ETFMetadata(BaseModel):
     """Metadata for an ETF from Claude lookup."""
 
     ticker: str = Field(..., description="ETF ticker symbol")
-    region: str = Field(..., description="Asset region: US, Europe, Japan, EM, Gold")
+    region: str = Field(..., description="Asset region: US, Europe, Japan, EM, Pacific, Gold")
     name: Optional[str] = Field(None, description="Full ETF name")
     isin: Optional[str] = Field(None, description="ISIN identifier")
     ter: Optional[float] = Field(None, ge=0, lt=1, description="Total Expense Ratio")

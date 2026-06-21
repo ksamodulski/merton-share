@@ -4,14 +4,15 @@ Tickers to identify:
 {tickers}
 
 For each ticker, determine:
-1. **region**: The primary geographic exposure. Must be one of: US, Europe, Japan, EM, Gold
+1. **region**: The primary geographic exposure. Must be one of: US, Europe, Japan, EM, Pacific, Gold
    - US: S&P 500, NASDAQ, US total market, or >50% US exposure
    - Europe: European stocks (Stoxx 600, MSCI Europe, individual European countries, **UK equities**)
    - Japan: Japanese stocks (Nikkei, TOPIX, MSCI Japan)
-   - EM: Emerging Markets (MSCI EM, individual EM countries); also use EM for **MSCI Pacific ex Japan** (Australia, HK, Singapore, NZ) as the closest fit in this 5-region model
+   - EM: Emerging Markets only (MSCI EM / EM IMI, individual EM countries). Note South Korea is Emerging under MSCI.
+   - Pacific: **developed** Asia-Pacific ex-Japan — **MSCI Pacific ex Japan** (Australia, Hong Kong, Singapore, New Zealand). These are Developed markets per MSCI and FTSE, so they are NOT Emerging Markets.
    - Gold: Gold ETFs, gold miners, precious metals
    - For global/world ETFs, assign based on largest regional weight (usually US)
-   - Note: tickers like SXR1 (iShares MSCI Pacific ex Japan, XETRA) → EM; SPYF (SPDR FTSE UK All Share, XETRA) → Europe
+   - Note: tickers like SXR1 (iShares Core MSCI Pacific ex Japan, XETRA) → Pacific; SPYF (SPDR FTSE UK All Share, XETRA) → Europe
 
 2. **name**: Full ETF name
 

@@ -3,7 +3,7 @@ export interface ETFHolding {
   ticker: string;
   isin?: string;
   name?: string;
-  region?: string;  // US, Europe, Japan, EM, Gold
+  region?: string;  // US, Europe, Japan, EM, Pacific, Gold
   valueEur: number;
   percentage: number;
   isAccumulating: boolean;

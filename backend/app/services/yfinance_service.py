@@ -71,6 +71,8 @@ def fetch_market_snapshot() -> dict:
     data["europe_realized_vol"] = _price_history_vol("VGK")
     data["japan_realized_vol"] = _price_history_vol("EWJ")
     data["em_realized_vol"] = _price_history_vol("EEM")
+    # EPP = iShares MSCI Pacific ex Japan (developed Asia-Pacific ex-Japan)
+    data["pacific_realized_vol"] = _price_history_vol("EPP")
     data["gold_realized_vol"] = _price_history_vol("GLD")
 
     # --- FX ---
@@ -92,6 +94,10 @@ def fetch_market_snapshot() -> dict:
     em = _etf_info("EEM")
     data["em_trailing_pe"] = em.get("trailing_pe")
     data["em_dividend_yield"] = em.get("dividend_yield")
+
+    pac = _etf_info("EPP")
+    data["pacific_trailing_pe"] = pac.get("trailing_pe")
+    data["pacific_dividend_yield"] = pac.get("dividend_yield")
 
     return data
 
@@ -118,6 +124,7 @@ def format_snapshot_for_prompt(snapshot: dict) -> str:
         f"  Europe (VGK): {pct(snapshot.get('europe_realized_vol'))}   → decimal: {num(snapshot.get('europe_realized_vol'), 4)}",
         f"  Japan (EWJ):  {pct(snapshot.get('japan_realized_vol'))}   → decimal: {num(snapshot.get('japan_realized_vol'), 4)}",
         f"  EM (EEM):     {pct(snapshot.get('em_realized_vol'))}   → decimal: {num(snapshot.get('em_realized_vol'), 4)}",
+        f"  Pacific (EPP): {pct(snapshot.get('pacific_realized_vol'))}   → decimal: {num(snapshot.get('pacific_realized_vol'), 4)}",
         f"  Gold (GLD):   {pct(snapshot.get('gold_realized_vol'))}   → decimal: {num(snapshot.get('gold_realized_vol'), 4)}",
         "",
         "Valuations (ETF proxies — use these directly, do NOT substitute your own guesses):",
@@ -125,6 +132,7 @@ def format_snapshot_for_prompt(snapshot: dict) -> str:
         f"  Europe (VGK): Trailing P/E = {num(snapshot.get('europe_trailing_pe'), 1)},  Div Yield = {pct(snapshot.get('europe_dividend_yield'))}",
         f"  Japan (EWJ):  Trailing P/E = {num(snapshot.get('japan_trailing_pe'), 1)},  Div Yield = {pct(snapshot.get('japan_dividend_yield'))}",
         f"  EM (EEM):     Trailing P/E = {num(snapshot.get('em_trailing_pe'), 1)},  Div Yield = {pct(snapshot.get('em_dividend_yield'))}",
+        f"  Pacific (EPP): Trailing P/E = {num(snapshot.get('pacific_trailing_pe'), 1)},  Div Yield = {pct(snapshot.get('pacific_dividend_yield'))}",
         "",
         "FX:",
         f"  EUR/PLN: {num(snapshot.get('eur_pln'), 4)}",

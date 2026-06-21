@@ -259,20 +259,21 @@ export default function MarketDataPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-3 py-2 text-left"></th>
-                      {(marketData.correlations?.assets || ['US', 'Europe', 'Japan', 'EM', 'Gold']).map((asset) => (
+                      {(marketData.correlations?.assets || ['US', 'Europe', 'Japan', 'EM', 'Pacific', 'Gold']).map((asset) => (
                         <th key={asset} className="px-3 py-2 text-center text-xs">{asset}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {(() => {
-                      const assets = marketData.correlations?.assets || ['US', 'Europe', 'Japan', 'EM', 'Gold'];
+                      const assets = marketData.correlations?.assets || ['US', 'Europe', 'Japan', 'EM', 'Pacific', 'Gold'];
                       const defaultMatrix: Record<string, Record<string, number>> = {
-                        US:     { US: 1.00, Europe: 0.85, Japan: 0.65, EM: 0.70, Gold: 0.05 },
-                        Europe: { US: 0.85, Europe: 1.00, Japan: 0.60, EM: 0.65, Gold: 0.10 },
-                        Japan:  { US: 0.65, Europe: 0.60, Japan: 1.00, EM: 0.55, Gold: 0.05 },
-                        EM:     { US: 0.70, Europe: 0.65, Japan: 0.55, EM: 1.00, Gold: 0.15 },
-                        Gold:   { US: 0.05, Europe: 0.10, Japan: 0.05, EM: 0.15, Gold: 1.00 },
+                        US:      { US: 1.00, Europe: 0.85, Japan: 0.65, EM: 0.70, Pacific: 0.70, Gold: 0.05 },
+                        Europe:  { US: 0.85, Europe: 1.00, Japan: 0.60, EM: 0.65, Pacific: 0.70, Gold: 0.10 },
+                        Japan:   { US: 0.65, Europe: 0.60, Japan: 1.00, EM: 0.55, Pacific: 0.65, Gold: 0.05 },
+                        EM:      { US: 0.70, Europe: 0.65, Japan: 0.55, EM: 1.00, Pacific: 0.70, Gold: 0.15 },
+                        Pacific: { US: 0.70, Europe: 0.70, Japan: 0.65, EM: 0.70, Pacific: 1.00, Gold: 0.10 },
+                        Gold:    { US: 0.05, Europe: 0.10, Japan: 0.05, EM: 0.15, Pacific: 0.10, Gold: 1.00 },
                       };
                       const matrix = marketData.correlations?.matrix;
 
@@ -338,7 +339,7 @@ export default function MarketDataPage() {
             </div>
 
             {/* Raw JSON */}
-            {rawData && (
+            {rawData != null && (
               <div>
                 <button
                   onClick={() => setShowRaw((v) => !v)}

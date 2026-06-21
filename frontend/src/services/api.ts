@@ -67,7 +67,7 @@ export const optimizeApi = {
         crra_utility: number;
         risk_contribution: Record<string, number>;
         return_confidence_interval?: [number, number];
-        estimation_uncertainty?: string;
+        estimation_uncertainty?: 'low' | 'medium' | 'high';
       };
       shrunk_expected_returns: Record<string, number>;
     }>('/optimize', {

@@ -1,13 +1,6 @@
 import { useState } from 'react';
 import type { ExpectedReturn } from '../../types';
 
-interface SuspiciousValueItem {
-  region: string;
-  value: number;
-  warning: string;
-  rationale: string;
-}
-
 interface Props {
   suspiciousReturns: ExpectedReturn[];
   onConfirm: () => void;

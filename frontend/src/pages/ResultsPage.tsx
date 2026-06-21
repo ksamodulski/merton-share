@@ -6,12 +6,15 @@ import SuspiciousValuesModal from '../components/modals/SuspiciousValuesModal';
 
 // Realistic default correlations based on historical data (10-year rolling)
 // Key: Japan has lower correlation (0.55-0.65), US-Europe highly correlated (0.85)
+// Pacific = developed Asia-Pacific ex-Japan (Australia, HK, Singapore, NZ): a
+// developed sleeve whose Asian members tie it moderately to EM and Japan.
 const DEFAULT_CORRELATIONS: Record<string, Record<string, number>> = {
-  US:     { US: 1.00, Europe: 0.85, Japan: 0.65, EM: 0.70, Gold: 0.05 },
-  Europe: { US: 0.85, Europe: 1.00, Japan: 0.60, EM: 0.65, Gold: 0.10 },
-  Japan:  { US: 0.65, Europe: 0.60, Japan: 1.00, EM: 0.55, Gold: 0.05 },
-  EM:     { US: 0.70, Europe: 0.65, Japan: 0.55, EM: 1.00, Gold: 0.15 },
-  Gold:   { US: 0.05, Europe: 0.10, Japan: 0.05, EM: 0.15, Gold: 1.00 },
+  US:      { US: 1.00, Europe: 0.85, Japan: 0.65, EM: 0.70, Pacific: 0.70, Gold: 0.05 },
+  Europe:  { US: 0.85, Europe: 1.00, Japan: 0.60, EM: 0.65, Pacific: 0.70, Gold: 0.10 },
+  Japan:   { US: 0.65, Europe: 0.60, Japan: 1.00, EM: 0.55, Pacific: 0.65, Gold: 0.05 },
+  EM:      { US: 0.70, Europe: 0.65, Japan: 0.55, EM: 1.00, Pacific: 0.70, Gold: 0.15 },
+  Pacific: { US: 0.70, Europe: 0.70, Japan: 0.65, EM: 0.70, Pacific: 1.00, Gold: 0.10 },
+  Gold:    { US: 0.05, Europe: 0.10, Japan: 0.05, EM: 0.15, Pacific: 0.10, Gold: 1.00 },
 };
 
 export default function ResultsPage() {
@@ -78,7 +81,7 @@ export default function ResultsPage() {
 
     try {
       // Build optimization request from market data
-      const regions = ['US', 'Europe', 'Japan', 'EM', 'Gold'];
+      const regions = ['US', 'Europe', 'Japan', 'EM', 'Pacific', 'Gold'];
 
       // Use expected returns from Claude if available, otherwise calculate from CAPE
       // Apply any user overrides
@@ -267,6 +270,7 @@ export default function ResultsPage() {
   const guessRegionFromTicker = (ticker: string): string => {
     const t = ticker.toUpperCase();
     if (t.includes('GLD') || t === '4GLD') return 'Gold';
+    if (t.includes('SXR1') || t.includes('CPXJ') || t.includes('PACIFIC')) return 'Pacific';
     if (t.includes('EM') || t.includes('IEMA')) return 'EM';
     if (t.includes('JP') || t.includes('IJPA')) return 'Japan';
     if (t.includes('EUR') || t.includes('MEUD') || t.includes('EUNK')) return 'Europe';

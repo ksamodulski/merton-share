@@ -8,7 +8,7 @@ import type { ETFHolding } from '../types';
 type InputMethod = 'manual' | 'csv';
 type Step = 'import' | 'identify' | 'review';
 
-const REGIONS = ['US', 'Europe', 'Japan', 'EM', 'Gold'] as const;
+const REGIONS = ['US', 'Europe', 'Japan', 'EM', 'Pacific', 'Gold'] as const;
 
 const EMPTY_HOLDING: ETFHolding = {
   ticker: '',

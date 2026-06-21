@@ -13,7 +13,7 @@ EXPECTED_RETURN_MAX = 0.15   # +15%
 class Valuation(BaseModel):
     """Valuation metrics for a region."""
 
-    region: str = Field(..., description="Region name (US, Europe, Japan, EM)")
+    region: str = Field(..., description="Region name (US, Europe, Japan, EM, Pacific)")
     cape: Optional[float] = Field(None, description="Cyclically Adjusted P/E")
     forward_pe: Optional[float] = Field(None, description="Forward P/E ratio")
     dividend_yield: float = Field(..., description="Dividend yield (as decimal)")
@@ -160,6 +160,8 @@ DEFAULT_THRESHOLDS = [
     ValuationThresholds(region="Europe", cautious_pe=16, favorable_pe=14),
     ValuationThresholds(region="Japan", cautious_cape=25, favorable_cape=18),
     ValuationThresholds(region="EM", cautious_pe=14, favorable_pe=13),
+    # Pacific = developed Asia-Pacific ex-Japan (Australia, HK, Singapore, NZ)
+    ValuationThresholds(region="Pacific", cautious_pe=17, favorable_pe=14),
 ]
 
 # Default volatilities from step2 prompt (as decimals)
@@ -168,6 +170,7 @@ DEFAULT_VOLATILITIES = {
     "Europe": 0.18,
     "Japan": 0.20,
     "EM": 0.22,
+    "Pacific": 0.17,  # developed Asia-Pacific ex-Japan
     "Gold": 0.15,
 }
 
@@ -177,4 +180,5 @@ DEFAULT_DIVIDEND_YIELDS = {
     "Europe": 0.028,
     "Japan": 0.020,
     "EM": 0.025,
+    "Pacific": 0.035,  # Australia/HK/Singapore are high-yield developed markets
 }

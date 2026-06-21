@@ -35,16 +35,17 @@ _KNOWN_TICKERS: Dict[str, ETFMetadata] = {
         description="Tracks the FTSE UK All Share Index (UK equities)",
     ),
     # iShares Core MSCI Pacific ex Japan UCITS ETF (XETRA: SXR1) — IE00B52MJY50
-    # Developed Pacific: Australia, Hong Kong, Singapore, NZ — classified as EM
-    # (closest fit in the 5-region US/Europe/Japan/EM/Gold model)
+    # MSCI Pacific ex Japan holds ONLY developed markets (Australia, Hong Kong,
+    # Singapore, New Zealand — all Developed per MSCI and FTSE), so it maps to the
+    # dedicated developed "Pacific" region, NOT Emerging Markets.
     "SXR1": ETFMetadata(
         ticker="SXR1",
-        region="EM",
+        region="Pacific",
         name="iShares Core MSCI Pacific ex Japan UCITS ETF",
         isin="IE00B52MJY50",
         ter=0.0020,
         is_accumulating=True,
-        description="Tracks MSCI Pacific ex Japan (Australia, HK, Singapore, NZ)",
+        description="Tracks MSCI Pacific ex Japan (developed: Australia, HK, Singapore, NZ)",
     ),
 }
 

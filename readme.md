@@ -119,7 +119,7 @@ Enter your Polish inflation-linked bond holdings (optional). These are treated a
 Three-phase process:
 1. **Import**: Upload IBKR CSV or manually enter holdings
 2. **Identify**: Click "Identify ETF Details" to have Claude recognize each ticker
-3. **Review**: Verify regions (US, Europe, Japan, EM, Gold) with dropdown overrides
+3. **Review**: Verify regions (US, Europe, Japan, EM, Pacific, Gold) with dropdown overrides
 
 ### Step 3: Risk Profile
 Complete the 4-question CRRA survey or directly input your CRRA value (1-10). Your CRRA (γ) is used in:
@@ -219,10 +219,11 @@ The app validates ETF holdings against these requirements:
 | US | S&P 500, NASDAQ, US total market | CSPX, VUAA |
 | Europe | MSCI Europe, Stoxx 600, UK equities | MEUD, SPYF |
 | Japan | MSCI Japan, Nikkei, TOPIX | IJPA |
-| EM | MSCI Emerging Markets; also MSCI Pacific ex Japan | IEMA, SXR1 |
+| EM | MSCI Emerging Markets (incl. South Korea per MSCI) | IEMA |
+| Pacific | Developed Asia-Pacific ex-Japan: MSCI Pacific ex Japan (Australia, HK, Singapore, NZ) | SXR1 |
 | Gold | Gold ETFs, precious metals | 4GLD |
 
-> **Note on IBKR XETRA tickers:** Several IBKR tickers differ from their underlying exposure. SPYF (SPDR FTSE UK All Share, XETRA) → Europe. SXR1 (iShares MSCI Pacific ex Japan, XETRA) → EM (closest fit in the 5-region model). These are pre-seeded in the ETF lookup cache so Claude is not consulted for them.
+> **Note on IBKR XETRA tickers:** Several IBKR tickers differ from their underlying exposure. SPYF (SPDR FTSE UK All Share, XETRA) → Europe. SXR1 (iShares Core MSCI Pacific ex Japan, XETRA) → **Pacific** — its index (MSCI Pacific ex Japan) holds only **developed** markets, so it is classified as developed Asia-Pacific, **not** Emerging Markets. These are pre-seeded in the ETF lookup cache so Claude is not consulted for them.
 
 > **Note on Gold:** Gold is included primarily for diversification benefits (low correlation with equities) rather than expected returns. Its expected return is estimated by Claude based on historical trends and market conditions.
 

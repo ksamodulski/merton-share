@@ -36,7 +36,7 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
     Gather current market data using Claude API.
 
     Collects:
-    - Valuations (CAPE, Forward P/E, Dividend Yield) for US, Europe, Japan, EM
+    - Valuations (CAPE, Forward P/E, Dividend Yield) for US, Europe, Japan, EM, Pacific
     - Volatility (implied and realized) for major indices
     - Institutional views from major firms
     - Current rates (risk-free rate, EUR/PLN)
