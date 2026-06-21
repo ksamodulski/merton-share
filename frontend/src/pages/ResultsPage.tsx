@@ -314,6 +314,19 @@ export default function ResultsPage() {
     );
   }
 
+  // The gap/allocation pipeline is keyed by region, but the user buys tickers.
+  // Map each region to the ETF ticker(s) currently held in it so buy/preview
+  // rows can name the actual instrument(s) to purchase.
+  const tickersByRegion: Record<string, string[]> = {};
+  portfolio.holdings.forEach((h) => {
+    const region = h.region || guessRegionFromTicker(h.ticker);
+    (tickersByRegion[region] ||= []).push(h.ticker);
+  });
+  const tickersForRegion = (region: string): string => {
+    const tickers = tickersByRegion[region];
+    return tickers && tickers.length > 0 ? tickers.join(', ') : '';
+  };
+
   return (
     <div className="space-y-6">
       {/* Suspicious Values Modal */}
@@ -704,13 +717,26 @@ export default function ResultsPage() {
 
             {recommendations && recommendations.length > 0 ? (
               <div className="space-y-3">
-                {recommendations.map((rec) => (
+                {recommendations.map((rec) => {
+                  const buyTickers = tickersForRegion(rec.ticker);
+                  return (
                   <div
                     key={rec.ticker}
                     className="flex items-center justify-between p-4 bg-primary-50 rounded-lg"
                   >
                     <div>
-                      <div className="font-semibold text-primary-900">{rec.ticker}</div>
+                      <div className="font-semibold text-primary-900">
+                        {rec.ticker}
+                        {buyTickers ? (
+                          <span className="ml-2 text-sm font-normal text-primary-700">
+                            → buy {buyTickers}
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-sm font-normal text-amber-600">
+                            → no current holding (add a {rec.ticker} ETF)
+                          </span>
+                        )}
+                      </div>
                       <div className="text-sm text-primary-700">{rec.rationale}</div>
                     </div>
                     <div className="text-right">
@@ -722,7 +748,8 @@ export default function ResultsPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-gray-500 text-center py-4">
@@ -745,7 +772,7 @@ export default function ResultsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left">Region</th>
+                        <th className="px-3 py-2 text-left">Region / ETF</th>
                         <th className="px-3 py-2 text-right">Current</th>
                         <th className="px-3 py-2 text-center">Add</th>
                         <th className="px-3 py-2 text-right">After</th>
@@ -756,7 +783,12 @@ export default function ResultsPage() {
                     <tbody className="divide-y divide-gray-100">
                       {postAllocationPreview.map((pos) => (
                         <tr key={pos.ticker}>
-                          <td className="px-3 py-2 font-medium">{pos.ticker}</td>
+                          <td className="px-3 py-2 font-medium">
+                            <div>{pos.ticker}</div>
+                            <div className="text-xs font-normal text-gray-400">
+                              {tickersForRegion(pos.ticker) || '— no holding'}
+                            </div>
+                          </td>
                           <td className="px-3 py-2 text-right">
                             <div>{pos.current_pct.toFixed(1)}%</div>
                             <div className="text-xs text-gray-400">€{pos.current_eur.toLocaleString()}</div>
