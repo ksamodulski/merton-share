@@ -38,3 +38,6 @@ npm-debug.log*
 
 # Cache
 .cache/
+
+# Run scripts (PID/log files)
+.run/
