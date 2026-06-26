@@ -52,6 +52,7 @@ export default function ResultsPage() {
     gap_after: number;
   }> | null>(null);
   const [shrunkExpectedReturns, setShrunkExpectedReturns] = useState<Record<string, number>>({});
+  const [weightCaps, setWeightCaps] = useState<Record<string, number>>({});
   const [showReturnDetail, setShowReturnDetail] = useState(false);
 
   // Check for suspicious expected returns before running optimization
@@ -155,6 +156,7 @@ export default function ResultsPage() {
         },
       });
       setShrunkExpectedReturns(result.shrunk_expected_returns ?? {});
+      setWeightCaps(result.weight_caps ?? {});
 
       // Calculate current allocation using region from ETF metadata
       const currentAllocation: Record<string, number> = {};
@@ -464,24 +466,52 @@ export default function ResultsPage() {
 
           {/* Optimal Weights (within risky portfolio) */}
           <div className="card">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Optimal Weights <span className="text-sm font-normal text-gray-500">(within risky assets)</span></h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">
+              Optimal Weights <span className="text-sm font-normal text-gray-500">(within risky assets)</span>
+            </h3>
+            <p
+              className="text-xs text-gray-500 mb-4 cursor-help"
+              title="Mean-variance optimization has no concept of market cap, so a small region with attractive numbers could otherwise dominate. Each region is capped at roughly 4x its share of global equity market cap (Gold has a fixed cap). The dashed marker on each bar shows that region's cap; an amber bar means the cap is binding — the optimizer wanted more but was limited."
+            >
+              Capped at ≈4× each region's global market-cap weight. Hover any row for details.
+            </p>
             <div className="space-y-3">
               {Object.entries(optimizationResult.optimalWeights)
                 .sort(([, a], [, b]) => b - a)
-                .map(([asset, weight]) => (
-                  <div key={asset} className="flex items-center gap-3">
-                    <span className="w-20 text-sm font-medium">{asset}</span>
-                    <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
+                .map(([asset, weight]) => {
+                  const capPct = (weightCaps[asset] ?? 0.5) * 100;
+                  const atCap = weight >= capPct - 0.1;
+                  return (
+                    <div key={asset} className="flex items-center gap-3">
+                      <span className="w-20 text-sm font-medium">{asset}</span>
                       <div
-                        className="h-full bg-primary-500 rounded-full"
-                        style={{ width: `${weight}%` }}
-                      />
+                        className="relative flex-1 h-6 bg-gray-100 rounded-full overflow-hidden cursor-help"
+                        title={`${asset}: ${weight.toFixed(1)}% allocated. Cap ${capPct.toFixed(0)}% (max allowed, ≈4× its global market-cap weight).${atCap ? ' At cap — the optimizer wanted more but was limited.' : ''}`}
+                      >
+                        <div
+                          className={`h-full rounded-full ${atCap ? 'bg-amber-500' : 'bg-primary-500'}`}
+                          style={{ width: `${weight}%` }}
+                        />
+                        {/* Cap marker */}
+                        {capPct < 100 && (
+                          <div
+                            className="absolute top-0 h-full border-l-2 border-dashed border-gray-400"
+                            style={{ left: `${capPct}%` }}
+                          />
+                        )}
+                      </div>
+                      <span className="w-16 text-right text-sm font-medium">
+                        {weight.toFixed(1)}%
+                      </span>
+                      <span
+                        className={`w-24 text-right text-xs cursor-help ${atCap ? 'text-amber-600 font-medium' : 'text-gray-400'}`}
+                        title={`Maximum weight allowed for ${asset}, set to ≈4× its share of global equity market cap so a small region can't dominate the portfolio.${atCap ? ' This cap is currently binding.' : ''}`}
+                      >
+                        cap {capPct.toFixed(0)}%{atCap ? ' ●' : ''}
+                      </span>
                     </div>
-                    <span className="w-16 text-right text-sm font-medium">
-                      {weight.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
 

@@ -37,6 +37,7 @@ async def optimize_portfolio(request: OptimizationRequest) -> OptimizationRespon
             volatilities=request.volatilities,
             correlation_matrix=request.correlation_matrix,
             crra=request.crra,
+            max_weights=request.max_weights,
         )
 
         result = optimizer.optimize()
@@ -55,6 +56,7 @@ async def optimize_portfolio(request: OptimizationRequest) -> OptimizationRespon
                 estimation_uncertainty=stats.get("estimation_uncertainty"),
             ),
             shrunk_expected_returns=result.get("shrunk_expected_returns", {}),
+            weight_caps=result.get("weight_caps", {}),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

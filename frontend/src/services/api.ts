@@ -57,6 +57,7 @@ export const optimizeApi = {
     volatilities: number[];
     correlation_matrix: number[][];
     crra: number;
+    max_weights?: number[];
   }) =>
     request<{
       optimal_weights: Record<string, number>;
@@ -70,6 +71,7 @@ export const optimizeApi = {
         estimation_uncertainty?: 'low' | 'medium' | 'high';
       };
       shrunk_expected_returns: Record<string, number>;
+      weight_caps: Record<string, number>;
     }>('/optimize', {
       method: 'POST',
       body: JSON.stringify(data),

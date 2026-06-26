@@ -13,6 +13,13 @@ class OptimizationRequest(BaseModel):
     volatilities: List[float] = Field(..., description="Volatilities (as decimals)")
     correlation_matrix: List[List[float]] = Field(..., description="Correlation matrix")
     crra: float = Field(..., gt=0, le=10, description="CRRA parameter")
+    max_weights: Optional[List[float]] = Field(
+        None,
+        description=(
+            "Optional per-asset upper bounds (aligned to assets). If omitted, "
+            "market-cap-derived caps are applied so a small region can't dominate."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "OptimizationRequest":
@@ -23,6 +30,8 @@ class OptimizationRequest(BaseModel):
             raise ValueError(f"Expected {n} returns, got {len(self.expected_returns)}")
         if len(self.volatilities) != n:
             raise ValueError(f"Expected {n} volatilities, got {len(self.volatilities)}")
+        if self.max_weights is not None and len(self.max_weights) != n:
+            raise ValueError(f"Expected {n} max_weights, got {len(self.max_weights)}")
         if len(self.correlation_matrix) != n:
             raise ValueError(f"Expected {n}x{n} correlation matrix")
         for i, row in enumerate(self.correlation_matrix):
@@ -68,6 +77,10 @@ class OptimizationResponse(BaseModel):
     shrunk_expected_returns: Dict[str, float] = Field(
         default_factory=dict,
         description="Bayes-Stein shrunk expected returns used in optimization (as decimals)"
+    )
+    weight_caps: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-asset upper bound applied during optimization (as decimals)"
     )
 
 

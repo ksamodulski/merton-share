@@ -73,6 +73,71 @@ class TestOptimizeEndpoint:
         assert response.status_code == 422
 
 
+class TestRegionCaps:
+    """Per-region weight caps tied to global market-cap weight."""
+
+    def test_default_max_weights_caps_small_regions(self):
+        from app.core.merton_share import default_max_weights
+
+        caps = default_max_weights(
+            ["US", "Europe", "Japan", "EM", "Pacific", "Gold"],
+            multiplier=4.0,
+            ceiling=0.50,
+            floor=0.10,
+        )
+        us, europe, japan, em, pacific, gold = caps
+        assert us == 0.50          # 0.62*4 -> clamped to ceiling
+        assert europe == 0.50      # 0.15*4 = 0.60 -> ceiling
+        assert japan == pytest.approx(0.24)   # 0.06*4
+        assert em == pytest.approx(0.40)      # 0.10*4
+        assert pacific == pytest.approx(0.12)  # 0.03*4
+        assert gold == 0.25        # fixed gold cap
+
+    def test_default_max_weights_relaxes_when_infeasible(self):
+        from app.core.merton_share import default_max_weights
+
+        # Two small regions whose caps (0.24 + 0.12) can't sum to 1.0 -> relax.
+        caps = default_max_weights(["Japan", "Pacific"], ceiling=0.50)
+        assert caps == [0.50, 0.50]
+
+    def test_pacific_weight_is_capped(self, client):
+        """A region that the optimizer loves is still bounded by its cap."""
+        # Pacific has the best return and lowest vol -> unconstrained MVO would
+        # pile in, but its cap (12%) must bind.
+        request = {
+            "assets": ["US", "Europe", "Japan", "EM", "Pacific", "Gold"],
+            "expected_returns": [0.02, 0.05, 0.05, 0.05, 0.12, 0.04],
+            "volatilities": [0.16, 0.18, 0.20, 0.23, 0.10, 0.28],
+            "correlation_matrix": [
+                [1.00, 0.85, 0.65, 0.70, 0.70, 0.05],
+                [0.85, 1.00, 0.60, 0.65, 0.70, 0.10],
+                [0.65, 0.60, 1.00, 0.55, 0.65, 0.05],
+                [0.70, 0.65, 0.55, 1.00, 0.70, 0.15],
+                [0.70, 0.70, 0.65, 0.70, 1.00, 0.10],
+                [0.05, 0.10, 0.05, 0.15, 0.10, 1.00],
+            ],
+            "crra": 3.5,
+        }
+
+        response = client.post("/api/v1/optimize", json=request)
+        assert response.status_code == 200
+        weights = response.json()["optimal_weights"]
+
+        assert weights["Pacific"] <= 12.0 + 0.1, weights
+        assert sum(weights.values()) == pytest.approx(100.0, abs=0.1)
+
+    def test_explicit_max_weights_override(self, client, sample_optimization_request):
+        """Caller-supplied max_weights take precedence over defaults."""
+        req = dict(sample_optimization_request)
+        # assets: US, Europe, Japan, EM, Gold — cap US hard at 5%
+        req["max_weights"] = [0.05, 0.50, 0.50, 0.50, 0.50]
+
+        response = client.post("/api/v1/optimize", json=req)
+        assert response.status_code == 200
+        weights = response.json()["optimal_weights"]
+        assert weights["US"] <= 5.0 + 0.1, weights
+
+
 class TestGapAnalysisEndpoint:
     """Tests for POST /api/v1/optimize/gap-analysis endpoint."""
 

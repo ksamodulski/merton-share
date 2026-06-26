@@ -1,7 +1,10 @@
 """Market data API routes."""
 
+import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
 
 from app.config import get_settings
 from app.models.market_data import (
@@ -30,6 +33,101 @@ _cache_timestamp: datetime | None = None
 settings = get_settings()
 
 
+def _assemble_market_data(result: dict, user_views: dict | None) -> MarketData:
+    """Convert Claude's raw JSON into a MarketData model, applying view blends.
+
+    Shared by the blocking ``/gather`` endpoint and the streaming
+    ``/gather/stream`` endpoint so the post-processing stays identical.
+    """
+    valuations = [
+        Valuation(
+            region=v["region"],
+            cape=v.get("cape"),
+            forward_pe=v.get("forward_pe"),
+            dividend_yield=v.get("dividend_yield", 0.02),
+            source=v.get("source", "Claude"),
+            date=v.get("date", datetime.utcnow().date().isoformat()),
+        )
+        for v in result.get("valuations", [])
+    ]
+
+    volatility = [
+        Volatility(
+            asset=v["asset"],
+            implied_vol=v.get("implied_vol"),
+            realized_vol_1y=v.get("realized_vol_1y"),
+            source=v.get("source", "Claude"),
+        )
+        for v in result.get("volatility", [])
+    ]
+
+    institutional_views = [
+        InstitutionalView(
+            region=v["region"],
+            stance=v.get("stance", "neutral"),
+            sources=v.get("sources", ["Claude"]),
+            key_drivers=v.get("key_drivers", []),
+            confidence=v.get("confidence"),
+        )
+        for v in result.get("institutional_views", [])
+    ]
+
+    # Build dicts for view adjustment lookup
+    inst_stances = {v.region: v.stance for v in institutional_views}
+    inst_confidence = {v.region: v.confidence for v in institutional_views}
+
+    # Parse expected returns from Claude and apply confidence-scaled view adjustments
+    raw_returns = result.get("expected_returns", [])
+    expected_returns = None
+    if raw_returns:
+        base_returns = {r["region"]: r.get("return", 0.05) for r in raw_returns}
+        view_adjustments = apply_view_adjustments(
+            base_returns=base_returns,
+            institutional_views=inst_stances,
+            confidence=inst_confidence,
+            user_views=user_views,
+            enabled=True,
+        )
+        expected_returns = []
+        for r in raw_returns:
+            region = r["region"]
+            adj = view_adjustments.get(region)
+            adjusted_value = adj.adjusted_return if adj else r.get("return", 0.05)
+            rationale = r.get("rationale", "")
+            if adj and adj.adjustment != 0:
+                rationale += f" + view adj {adj.adjustment:+.1%} ({adj.rationale})"
+            expected_returns.append(
+                ExpectedReturn.model_validate({
+                    "region": region,
+                    "return": adjusted_value,
+                    "rationale": rationale,
+                    "confidence": r.get("confidence"),
+                })
+            )
+
+    # Parse correlation matrix if provided
+    correlations_raw = result.get("correlations")
+    correlations = None
+    if correlations_raw and "assets" in correlations_raw and "matrix" in correlations_raw:
+        correlations = CorrelationMatrix(
+            assets=correlations_raw["assets"],
+            matrix=correlations_raw["matrix"],
+        )
+
+    return MarketData(
+        valuations=valuations,
+        volatility=volatility,
+        institutional_views=institutional_views,
+        expected_returns=expected_returns,
+        correlations=correlations,
+        risk_free_rate=result.get("risk_free_rate", 0.025),
+        bund_yield_10y=result.get("bund_yield_10y"),
+        eur_pln_rate=result.get("eur_pln_rate", 4.30),
+        fetched_at=datetime.utcnow(),
+        sources=result.get("sources", ["Claude API"]),
+    )
+
+
 @router.post("/gather", response_model=MarketData)
 async def gather_market_data(request: MarketDataRequest) -> MarketData:
     """
@@ -43,8 +141,9 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
     """
     global _market_data_cache, _cache_timestamp
 
-    # Check cache
-    if not request.force_refresh and _market_data_cache and _cache_timestamp:
+    # Check cache (skip when the user supplied their own views, since those
+    # change the blended expected returns and the cache is view-agnostic).
+    if not request.force_refresh and not request.user_views and _market_data_cache and _cache_timestamp:
         age_hours = (datetime.utcnow() - _cache_timestamp).total_seconds() / 3600
         if age_hours < settings.market_data_cache_hours:
             return _market_data_cache
@@ -54,97 +153,13 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
         claude = get_claude_service()
         result = await claude.gather_market_data()
 
-        # Convert to Pydantic models
-        valuations = [
-            Valuation(
-                region=v["region"],
-                cape=v.get("cape"),
-                forward_pe=v.get("forward_pe"),
-                dividend_yield=v.get("dividend_yield", 0.02),
-                source=v.get("source", "Claude"),
-                date=v.get("date", datetime.utcnow().date().isoformat()),
-            )
-            for v in result.get("valuations", [])
-        ]
+        market_data = _assemble_market_data(result, request.user_views)
 
-        volatility = [
-            Volatility(
-                asset=v["asset"],
-                implied_vol=v.get("implied_vol"),
-                realized_vol_1y=v.get("realized_vol_1y"),
-                source=v.get("source", "Claude"),
-            )
-            for v in result.get("volatility", [])
-        ]
-
-        institutional_views = [
-            InstitutionalView(
-                region=v["region"],
-                stance=v.get("stance", "neutral"),
-                sources=v.get("sources", ["Claude"]),
-                key_drivers=v.get("key_drivers", []),
-                confidence=v.get("confidence"),
-            )
-            for v in result.get("institutional_views", [])
-        ]
-
-        # Build dicts for view adjustment lookup
-        inst_stances = {v.region: v.stance for v in institutional_views}
-        inst_confidence = {v.region: v.confidence for v in institutional_views}
-
-        # Parse expected returns from Claude and apply confidence-scaled view adjustments
-        raw_returns = result.get("expected_returns", [])
-        expected_returns = None
-        if raw_returns:
-            base_returns = {r["region"]: r.get("return", 0.05) for r in raw_returns}
-            view_adjustments = apply_view_adjustments(
-                base_returns=base_returns,
-                institutional_views=inst_stances,
-                confidence=inst_confidence,
-                enabled=True,
-            )
-            expected_returns = []
-            for r in raw_returns:
-                region = r["region"]
-                adj = view_adjustments.get(region)
-                adjusted_value = adj.adjusted_return if adj else r.get("return", 0.05)
-                rationale = r.get("rationale", "")
-                if adj and adj.adjustment != 0:
-                    rationale += f" + view adj {adj.adjustment:+.1%} ({adj.rationale})"
-                expected_returns.append(
-                    ExpectedReturn.model_validate({
-                        "region": region,
-                        "return": adjusted_value,
-                        "rationale": rationale,
-                        "confidence": r.get("confidence"),
-                    })
-                )
-
-        # Parse correlation matrix if provided
-        correlations_raw = result.get("correlations")
-        correlations = None
-        if correlations_raw and "assets" in correlations_raw and "matrix" in correlations_raw:
-            correlations = CorrelationMatrix(
-                assets=correlations_raw["assets"],
-                matrix=correlations_raw["matrix"],
-            )
-
-        market_data = MarketData(
-            valuations=valuations,
-            volatility=volatility,
-            institutional_views=institutional_views,
-            expected_returns=expected_returns,
-            correlations=correlations,
-            risk_free_rate=result.get("risk_free_rate", 0.025),
-            bund_yield_10y=result.get("bund_yield_10y"),
-            eur_pln_rate=result.get("eur_pln_rate", 4.30),
-            fetched_at=datetime.utcnow(),
-            sources=result.get("sources", ["Claude API"]),
-        )
-
-        # Cache the result
-        _market_data_cache = market_data
-        _cache_timestamp = datetime.utcnow()
+        # Cache the result (only the view-agnostic version, so user-specific
+        # blends never leak into a later request that omits user views).
+        if not request.user_views:
+            _market_data_cache = market_data
+            _cache_timestamp = datetime.utcnow()
 
         return market_data
 
@@ -153,6 +168,66 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
             status_code=500,
             detail=f"Failed to gather market data: {str(e)}",
         )
+
+
+@router.post("/gather/stream")
+async def gather_market_data_stream(request: MarketDataRequest) -> StreamingResponse:
+    """
+    Streaming variant of ``/gather``.
+
+    Emits Server-Sent Events so the UI can show live progress:
+      data: {"type": "status", "stage": ..., "detail": ...}
+      data: {"type": "result", "data": <MarketData>}
+      data: {"type": "error",  "detail": ...}
+    """
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    async def event_gen():
+        global _market_data_cache, _cache_timestamp
+
+        # Serve from cache when allowed (the UI normally forces a refresh).
+        if (not request.force_refresh and not request.user_views
+                and _market_data_cache and _cache_timestamp):
+            age_hours = (datetime.utcnow() - _cache_timestamp).total_seconds() / 3600
+            if age_hours < settings.market_data_cache_hours:
+                yield sse({"type": "status", "stage": "cache", "detail": "Loaded from cache"})
+                yield sse({"type": "result", "data": jsonable_encoder(_market_data_cache)})
+                return
+
+        claude = get_claude_service()
+        raw_result = None
+        try:
+            async for ev in claude.gather_market_data_streaming():
+                if ev.get("type") == "result":
+                    raw_result = ev["data"]
+                    break
+                if ev.get("type") == "error":
+                    yield sse(ev)
+                    return
+                yield sse(ev)
+        except Exception as e:  # noqa: BLE001 — surfaced to the client as an error event
+            yield sse({"type": "error", "detail": f"Failed to gather market data: {e}"})
+            return
+
+        if raw_result is None:
+            yield sse({"type": "error", "detail": "No data returned from Claude"})
+            return
+
+        try:
+            market_data = _assemble_market_data(raw_result, request.user_views)
+        except Exception as e:  # noqa: BLE001
+            yield sse({"type": "error", "detail": f"Failed to assemble market data: {e}"})
+            return
+
+        if not request.user_views:
+            _market_data_cache = market_data
+            _cache_timestamp = datetime.utcnow()
+
+        yield sse({"type": "result", "data": jsonable_encoder(market_data)})
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.get("/cached")

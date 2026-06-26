@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # Anthropic API
     anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-20250514"
+    claude_model: str = "claude-opus-4-8"
 
     # Cache settings
     market_data_cache_hours: int = 24
@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # Bayes-Stein shrinkage (Jorion 1986) — shrinks μ toward cross-sectional mean
     # phi=0 means no shrinkage (raw estimates), phi=1 means full equal-weight prior
     shrinkage_intensity: float = 0.5
+
+    # Per-region weight caps tied to global market-cap weight, so a small region
+    # (e.g. developed Pacific, ~3% of global equity) can't dominate the optimum.
+    # cap = clamp(market_weight * multiplier, floor, ceiling).
+    region_overweight_multiplier: float = 4.0  # allow up to 4x a region's market weight
+    max_region_weight: float = 0.50            # absolute ceiling for any single asset
+    min_region_weight_cap: float = 0.10        # floor so tiny regions keep a usable band
 
     class Config:
         env_file = ".env"

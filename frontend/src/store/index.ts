@@ -11,6 +11,8 @@ import type {
   WorkflowStep,
 } from '../types';
 
+export type UserStance = 'overweight' | 'neutral' | 'underweight';
+
 interface AppState {
   // Bond state
   bondPosition: BondPosition | null;
@@ -31,6 +33,11 @@ interface AppState {
   marketDataLoading: boolean;
   setMarketData: (data: MarketData | null) => void;
   setMarketDataLoading: (loading: boolean) => void;
+
+  // User's own views per region (blended with institutional views by confidence).
+  // Regions absent from this map mean "no opinion" and are not sent to the backend.
+  userViews: Record<string, UserStance>;
+  setUserView: (region: string, stance: UserStance | null) => void;
 
   // Optimization results
   optimizationResult: OptimizationResult | null;
@@ -59,6 +66,7 @@ const initialState = {
   crraProfile: null,
   marketData: null,
   marketDataLoading: false,
+  userViews: {} as Record<string, UserStance>,
   optimizationResult: null,
   gapAnalysis: null,
   recommendations: null,
@@ -86,6 +94,17 @@ export const useAppStore = create<AppState>()(
         set({ marketData, marketDataLoading: false }),
 
       setMarketDataLoading: (loading) => set({ marketDataLoading: loading }),
+
+      setUserView: (region, stance) =>
+        set((state) => {
+          const next = { ...state.userViews };
+          if (stance === null) {
+            delete next[region];
+          } else {
+            next[region] = stance;
+          }
+          return { userViews: next };
+        }),
 
       setOptimizationResult: (optimizationResult) => set({ optimizationResult }),
 
@@ -115,6 +134,7 @@ export const useAppStore = create<AppState>()(
         crraMethod: state.crraMethod,
         crraProfile: state.crraProfile,
         marketData: state.marketData,
+        userViews: state.userViews,
         contributionAmount: state.contributionAmount,
         completedSteps: state.completedSteps,
       }),

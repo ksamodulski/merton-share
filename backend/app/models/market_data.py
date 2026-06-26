@@ -122,6 +122,14 @@ class MarketDataRequest(BaseModel):
     """Request to gather market data."""
 
     force_refresh: bool = Field(False, description="Force refresh even if cached")
+    user_views: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            "User's own stance per region (overweight/neutral/underweight). "
+            "Only include regions the user explicitly expressed an opinion on; "
+            "blended with institutional views by confidence."
+        ),
+    )
 
 
 class ValuationThresholds(BaseModel):

@@ -59,6 +59,12 @@ BASE_VIEW_ADJUSTMENT: Dict[str, float] = {
     "underweight": -0.02,   # up to -2% return penalty
 }
 
+# Default confidence assigned to the *user's own* views. The user does not
+# enter a confidence in the UI (3-way stance only), so we treat their explicit
+# conviction as high — i.e. at least as strong as institutional consensus when
+# the two are blended. Lower this constant to make user views less dominant.
+USER_VIEW_DEFAULT_CONFIDENCE = "high"
+
 # Optional: Valuation signal adjustments (smaller magnitude)
 VALUATION_SIGNAL_ADJUSTMENT = {
     "favorable": +0.005,    # +0.5% for attractive valuations
@@ -72,24 +78,38 @@ def apply_view_adjustments(
     institutional_views: Optional[Dict[str, str]] = None,
     valuation_signals: Optional[Dict[str, str]] = None,
     confidence: Optional[Dict[str, Optional[str]]] = None,
+    user_views: Optional[Dict[str, str]] = None,
+    user_confidence: Optional[Dict[str, Optional[str]]] = None,
     enabled: bool = False,
 ) -> Dict[str, ViewAdjustment]:
     """
     Apply qualitative view adjustments to base expected returns.
 
     This function implements a simplified Black-Litterman approach where
-    institutional views and valuation signals are converted to numeric
-    adjustments on expected returns. The adjustment magnitude is scaled
-    by the confidence level of each view:
-      - high   (web-searched breaking news) → ±2.0%
-      - medium (recent reports / derived)   → ±1.5%
-      - low    (pure Claude estimate)       → ±1.0%
+    institutional views, the user's own views, and valuation signals are
+    converted to numeric adjustments on expected returns.
+
+    Institutional and user stances (±2% at full strength) are combined into a
+    single confidence-weighted blend per region: each source contributes its
+    base magnitude weighted by its confidence scale, and the remaining weight
+    mass implicitly goes to equilibrium (neutral, 0) — which is why the
+    denominator is floored at 1.0. With a single source this reduces to the
+    original ``magnitude * confidence_scale`` behaviour; with both sources a
+    high-confidence user view outweighs a low-confidence institutional one.
+    Confidence scales:
+      - high   (web-searched breaking news / explicit user view) → weight 1.0
+      - medium (recent reports / derived)                        → weight 0.75
+      - low    (pure Claude estimate)                            → weight 0.5
 
     Args:
         base_returns: Dict of region -> base expected return (decimal)
         institutional_views: Dict of region -> stance (overweight/neutral/underweight)
         valuation_signals: Dict of region -> signal (favorable/neutral/cautious)
         confidence: Dict of region -> confidence level (high/medium/low/None)
+        user_views: Dict of region -> user's own stance (overweight/neutral/underweight).
+            Only include regions the user explicitly expressed an opinion on.
+        user_confidence: Optional dict of region -> confidence for user views;
+            defaults to USER_VIEW_DEFAULT_CONFIDENCE ("high") when absent.
         enabled: If False, returns base returns without adjustment
 
     Returns:
@@ -114,19 +134,40 @@ def apply_view_adjustments(
         sources = []
         region_confidence: Optional[str] = None
 
-        # Apply institutional view adjustment if enabled
+        # Blend institutional + user stances by confidence (Black-Litterman lite).
+        # Each present source contributes (confidence_weight * base_magnitude);
+        # the denominator is floored at 1.0 so a single source reduces to the
+        # original magnitude*confidence behaviour while two sources average out.
+        weighted_sum = 0.0
+        weight_total = 0.0
+
         if enabled and institutional_views and region in institutional_views:
             stance = institutional_views[region]
             region_confidence = (confidence or {}).get(region)
-            scale = CONFIDENCE_SCALE.get(region_confidence, CONFIDENCE_SCALE[None])
-            inst_adj = BASE_VIEW_ADJUSTMENT.get(stance, 0.0) * scale
-            if inst_adj != 0:
-                conf_label = region_confidence or "low"
-                direction = "+" if inst_adj > 0 else ""
+            w = CONFIDENCE_SCALE.get(region_confidence, CONFIDENCE_SCALE[None])
+            m = BASE_VIEW_ADJUSTMENT.get(stance, 0.0)
+            weighted_sum += w * m
+            weight_total += w
+            if m != 0:
                 rationale_parts.append(
-                    f"institutional {stance} (conf:{conf_label}, {direction}{inst_adj:.1%})"
+                    f"institutional {stance} (conf:{region_confidence or 'low'})"
                 )
                 sources.append("Institutional consensus")
+
+        if enabled and user_views and region in user_views:
+            u_stance = user_views[region]
+            u_conf = (user_confidence or {}).get(region) or USER_VIEW_DEFAULT_CONFIDENCE
+            w = CONFIDENCE_SCALE.get(u_conf, CONFIDENCE_SCALE[None])
+            m = BASE_VIEW_ADJUSTMENT.get(u_stance, 0.0)
+            weighted_sum += w * m
+            weight_total += w
+            # A user "neutral" (m==0) still carries weight and dampens the
+            # institutional stance toward equilibrium, so record it either way.
+            rationale_parts.append(f"your view {u_stance} (conf:{u_conf})")
+            sources.append("Your view")
+
+        if weight_total > 0:
+            inst_adj = weighted_sum / max(1.0, weight_total)
 
         # Apply valuation signal adjustment if enabled
         if enabled and valuation_signals and region in valuation_signals:
@@ -164,6 +205,8 @@ def get_adjusted_returns(
     institutional_views: Optional[Dict[str, str]] = None,
     valuation_signals: Optional[Dict[str, str]] = None,
     confidence: Optional[Dict[str, Optional[str]]] = None,
+    user_views: Optional[Dict[str, str]] = None,
+    user_confidence: Optional[Dict[str, Optional[str]]] = None,
     enabled: bool = False,
 ) -> Dict[str, float]:
     """
@@ -184,6 +227,8 @@ def get_adjusted_returns(
         institutional_views=institutional_views,
         valuation_signals=valuation_signals,
         confidence=confidence,
+        user_views=user_views,
+        user_confidence=user_confidence,
         enabled=enabled,
     )
     return {region: adj.adjusted_return for region, adj in adjustments.items()}

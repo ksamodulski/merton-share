@@ -8,9 +8,59 @@ Risk Aversion) utility function. All assets are treated as risky assets.
 import logging
 import numpy as np
 from scipy.optimize import minimize
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
+
+
+# Approximate share of global equity market cap by region (~2026, float-adjusted).
+# Used to derive per-region weight caps so a small region cannot dominate the
+# long-only optimum (mean-variance has no notion of capacity or market cap).
+GLOBAL_MARKET_CAP_WEIGHTS: Dict[str, float] = {
+    "US": 0.62,
+    "Europe": 0.15,
+    "Japan": 0.06,
+    "EM": 0.10,
+    "Pacific": 0.03,  # developed Asia-Pacific ex-Japan (AUS/HK/SG/NZ)
+}
+
+# Gold is a diversifier/hedge, not an equity market cap — give it a fixed cap
+# rather than deriving one from a market weight.
+GOLD_MAX_WEIGHT = 0.25
+
+
+def default_max_weights(
+    asset_names: List[str],
+    multiplier: float = 4.0,
+    ceiling: float = 0.50,
+    floor: float = 0.10,
+) -> List[float]:
+    """
+    Build per-asset upper bounds from global market-cap weights.
+
+    For each region: cap = clamp(market_weight * multiplier, floor, ceiling).
+    Gold gets a fixed cap; unknown asset names (e.g. raw tickers) fall back to
+    the ceiling so non-region uses are unaffected.
+
+    If the resulting caps cannot sum to 1.0 (e.g. a basket of only small
+    regions), they are relaxed to the flat ceiling so the sum-to-one constraint
+    stays feasible.
+    """
+    caps: List[float] = []
+    for name in asset_names:
+        if name == "Gold":
+            caps.append(GOLD_MAX_WEIGHT)
+        elif name in GLOBAL_MARKET_CAP_WEIGHTS:
+            raw = GLOBAL_MARKET_CAP_WEIGHTS[name] * multiplier
+            caps.append(min(ceiling, max(floor, raw)))
+        else:
+            caps.append(ceiling)
+
+    # Feasibility guard: weights must be able to sum to 1.0.
+    if sum(caps) < 1.0:
+        caps = [ceiling] * len(asset_names)
+
+    return caps
 
 
 def shrink_expected_returns(returns: np.ndarray, phi: float = 0.5) -> np.ndarray:
@@ -49,6 +99,7 @@ class PortfolioOptimizer:
         correlation_matrix: Union[List[List[float]], np.ndarray],
         crra: float = 3.0,
         risk_free_rate: float = 0.025,
+        max_weights: Optional[List[float]] = None,
     ):
         """
         Initialize the portfolio optimizer.
@@ -60,6 +111,9 @@ class PortfolioOptimizer:
             correlation_matrix: Correlation matrix between assets
             crra: Coefficient of Relative Risk Aversion (1-10 typical range)
             risk_free_rate: Risk-free rate for Sharpe ratio calculation
+            max_weights: Optional per-asset upper bounds (aligned to asset_names).
+                Defaults to market-cap-derived caps so a small region can't
+                dominate (see default_max_weights).
 
         Raises:
             ValueError: If inputs are invalid or inconsistent
@@ -73,6 +127,20 @@ class PortfolioOptimizer:
         if crra <= 0:
             raise ValueError("CRRA parameter must be positive")
         self.crra = crra
+
+        # Per-asset upper bounds. Default to market-cap-derived caps.
+        from app.config import get_settings
+        _settings = get_settings()
+        if max_weights is None:
+            max_weights = default_max_weights(
+                asset_names,
+                multiplier=_settings.region_overweight_multiplier,
+                ceiling=_settings.max_region_weight,
+                floor=_settings.min_region_weight_cap,
+            )
+        if len(max_weights) != len(asset_names):
+            raise ValueError("max_weights length must match number of assets")
+        self.max_weights = list(max_weights)
 
         # Apply Bayes-Stein shrinkage (Jorion 1986) toward grand mean
         from app.config import get_settings
@@ -148,16 +216,19 @@ class PortfolioOptimizer:
         """
         n = len(self.asset_names)
 
-        # Initial guess: equal weights
-        x0 = np.ones(n) / n
+        # Bounds: 0% to the per-asset cap (market-cap-derived, prevents a small
+        # region from dominating the long-only optimum).
+        bounds = [(0.0, self.max_weights[i]) for i in range(n)]
+
+        # Initial guess: equal weights, clipped to the caps and renormalized so
+        # the starting point is feasible w.r.t. the upper bounds.
+        x0 = np.minimum(np.ones(n) / n, self.max_weights)
+        x0 = x0 / np.sum(x0)
 
         # Constraints
         constraints = [
             {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},  # Weights sum to 1
         ]
-
-        # Bounds: 0% to 50% for each asset (prevents extreme concentration)
-        bounds = [(0.0, 0.50) for _ in range(n)]
 
         # Optimize
         result = minimize(
@@ -170,8 +241,8 @@ class PortfolioOptimizer:
         )
 
         if not result.success:
-            # Fall back to equal weights if optimization fails
-            return np.ones(n) / n
+            # Fall back to the feasible (cap-respecting) equal-weight start.
+            return x0
 
         weights = result.x
         # Ensure weights are non-negative and sum to 1
@@ -303,5 +374,9 @@ class PortfolioOptimizer:
             "shrunk_expected_returns": {
                 name: float(ret)
                 for name, ret in zip(self.asset_names, self.expected_returns)
+            },
+            "weight_caps": {
+                name: float(cap)
+                for name, cap in zip(self.asset_names, self.max_weights)
             },
         }

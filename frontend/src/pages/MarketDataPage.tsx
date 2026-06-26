@@ -1,7 +1,19 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
+import type { UserStance } from '../store';
 import type { MarketData } from '../types';
+
+// Regions the user can express a view on. Must match the backend region names
+// emitted in market_data.txt / expected_returns.
+const VIEW_REGIONS = ['US', 'Europe', 'Japan', 'EM', 'Pacific', 'Gold'] as const;
+
+const STANCE_OPTIONS: { value: UserStance | null; label: string }[] = [
+  { value: null, label: 'No opinion' },
+  { value: 'overweight', label: 'Overweight' },
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'underweight', label: 'Underweight' },
+];
 
 export default function MarketDataPage() {
   const navigate = useNavigate();
@@ -11,28 +23,95 @@ export default function MarketDataPage() {
     markStepComplete,
     setMarketDataLoading,
     marketDataLoading,
+    userViews,
+    setUserView,
   } = useAppStore();
   const [error, setError] = useState<string | null>(null);
   const [rawData, setRawData] = useState<unknown>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [progress, setProgress] = useState<{ stage: string; detail: string; at: string }[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fmtElapsed = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const handleFetchMarketData = async () => {
     setError(null);
+    setProgress([]);
+    setElapsed(0);
     setMarketDataLoading(true);
 
+    const start = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(
+      () => setElapsed(Math.floor((Date.now() - start) / 1000)),
+      1000,
+    );
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const response = await fetch('/api/v1/market-data/gather', {
+      const response = await fetch('/api/v1/market-data/gather/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force_refresh: true }),
+        signal: controller.signal,
+        body: JSON.stringify({
+          force_refresh: true,
+          // Only send regions the user explicitly took a stance on.
+          user_views: Object.keys(userViews).length > 0 ? userViews : undefined,
+        }),
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Failed to fetch market data');
+      if (!response.ok || !response.body) {
+        throw new Error(`Failed to start fetch (HTTP ${response.status})`);
       }
 
-      const data = await response.json();
+      // Read the Server-Sent Events stream: each event is a "data: <json>" line
+      // separated by a blank line. Accumulate status events into `progress`,
+      // and capture the final `result` payload.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any = null;
+
+      streamLoop: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() ?? '';
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+          const evt = JSON.parse(payload) as {
+            type: string;
+            stage?: string;
+            detail?: string;
+            data?: Record<string, unknown>;
+          };
+          if (evt.type === 'status') {
+            const at = new Date().toLocaleTimeString([], { hour12: false });
+            setProgress((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.stage === evt.stage && last.detail === evt.detail) return prev;
+              return [...prev, { stage: evt.stage ?? '', detail: evt.detail ?? '', at }];
+            });
+          } else if (evt.type === 'error') {
+            throw new Error(evt.detail || 'Fetch failed');
+          } else if (evt.type === 'result') {
+            data = evt.data ?? null;
+            break streamLoop;
+          }
+        }
+      }
+
+      if (!data) throw new Error('No data received from server');
       setRawData(data);
 
       // Convert to frontend format
@@ -77,10 +156,24 @@ export default function MarketDataPage() {
       setMarketData(marketData);
       markStepComplete('market-data');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch market data');
+      // A user-triggered abort isn't a real error — just leave a soft note.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setProgress([]);
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch market data');
+      }
     } finally {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      abortRef.current = null;
       setMarketDataLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
   };
 
   const handleContinue = () => {
@@ -102,6 +195,54 @@ export default function MarketDataPage() {
         </div>
       )}
 
+      {/* Your views — blended with institutional views before optimization */}
+      <div className="card">
+        <h3 className="text-lg font-medium text-gray-900">Your Views (optional)</h3>
+        <p className="mt-1 mb-4 text-sm text-gray-500">
+          Express your own stance per region. Your view is blended with the
+          institutional/AI consensus by confidence before expected returns are
+          computed. Leave as <span className="font-medium">No opinion</span> to
+          rely entirely on the research.
+        </p>
+        <div className="space-y-2">
+          {VIEW_REGIONS.map((region) => {
+            const selected = (userViews[region] ?? null) as UserStance | null;
+            return (
+              <div key={region} className="flex items-center gap-3">
+                <div className="w-20 text-sm font-medium text-gray-700">{region}</div>
+                <div className="flex flex-wrap gap-1">
+                  {STANCE_OPTIONS.map((opt) => {
+                    const isActive = selected === opt.value;
+                    const activeClass =
+                      opt.value === 'overweight'
+                        ? 'bg-green-600 text-white border-green-600'
+                        : opt.value === 'underweight'
+                        ? 'bg-red-600 text-white border-red-600'
+                        : opt.value === 'neutral'
+                        ? 'bg-gray-600 text-white border-gray-600'
+                        : 'bg-gray-200 text-gray-700 border-gray-300';
+                    return (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => setUserView(region, opt.value)}
+                        className={`px-3 py-1 text-xs rounded border transition-colors ${
+                          isActive
+                            ? activeClass
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="card">
         <div className="flex gap-3 mb-6">
           <button
@@ -121,9 +262,38 @@ export default function MarketDataPage() {
         </div>
 
         {marketDataLoading && (
-          <div className="text-center py-8 text-gray-500">
-            <p>Claude is gathering current market data...</p>
-            <p className="text-sm mt-1">This may take a few seconds.</p>
+          <div className="py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="animate-spin w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full"></span>
+              <span className="font-medium text-gray-700">Live from Claude</span>
+              <span className="ml-auto text-xs text-gray-400 tabular-nums">
+                elapsed {fmtElapsed(elapsed)}
+              </span>
+            </div>
+            <ul className="space-y-1.5 text-sm">
+              {progress.map((p, i) => (
+                <li key={i} className="flex items-start gap-2 text-gray-600">
+                  <span className="text-gray-400 text-xs tabular-nums mt-0.5">{p.at}</span>
+                  <span className="text-green-600 mt-0.5">✓</span>
+                  <span>{p.detail}</span>
+                </li>
+              ))}
+              <li className="flex items-center gap-2 text-gray-400">
+                <span className="animate-pulse">⟳</span>
+                <span>working…</span>
+              </li>
+            </ul>
+            <div className="flex items-center gap-3 mt-4">
+              <button
+                onClick={handleCancel}
+                className="btn btn-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <p className="text-xs text-gray-400">
+                Opus 4.8 with web search &amp; reasoning — this usually takes 1–3 min.
+              </p>
+            </div>
           </div>
         )}
 
