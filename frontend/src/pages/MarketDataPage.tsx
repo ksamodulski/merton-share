@@ -1,8 +1,49 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import type { UserStance } from '../store';
 import type { MarketData } from '../types';
+
+// Map Claude's raw snake_case JSON into the frontend MarketData shape.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toMarketData(data: any): MarketData {
+  return {
+    valuations: data.valuations.map((v: Record<string, unknown>) => ({
+      region: v.region,
+      cape: v.cape,
+      forwardPe: v.forward_pe,
+      dividendYield: v.dividend_yield,
+      source: v.source,
+      date: v.date,
+    })),
+    volatility: data.volatility.map((v: Record<string, unknown>) => ({
+      asset: v.asset,
+      impliedVol: v.implied_vol,
+      realizedVol1Y: v.realized_vol_1y,
+      source: v.source,
+    })),
+    institutionalViews: data.institutional_views.map((v: Record<string, unknown>) => ({
+      region: v.region,
+      stance: v.stance,
+      sources: v.sources,
+      keyDrivers: v.key_drivers,
+      confidence: v.confidence as 'high' | 'medium' | 'low' | undefined,
+    })),
+    expectedReturns: data.expected_returns?.map((r: Record<string, unknown>) => ({
+      region: r.region,
+      return: r.return,
+      rationale: r.rationale,
+    })),
+    correlations: data.correlations
+      ? { assets: data.correlations.assets, matrix: data.correlations.matrix }
+      : undefined,
+    riskFreeRate: data.risk_free_rate,
+    bundYield10y: data.bund_yield_10y,
+    eurPlnRate: data.eur_pln_rate,
+    fetchedAt: data.fetched_at,
+    sources: data.sources,
+  };
+}
 
 // Regions the user can express a view on. Must match the backend region names
 // emitted in market_data.txt / expected_returns.
@@ -33,147 +74,172 @@ export default function MarketDataPage() {
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const startMsRef = useRef<number>(0);
 
   const fmtElapsed = (s: number) =>
     `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  const handleFetchMarketData = async () => {
-    setError(null);
-    setProgress([]);
-    setElapsed(0);
-    setMarketDataLoading(true);
-
-    const start = Date.now();
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(
-      () => setElapsed(Math.floor((Date.now() - start) / 1000)),
-      1000,
-    );
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const response = await fetch('/api/v1/market-data/gather/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          force_refresh: true,
-          // Only send regions the user explicitly took a stance on.
-          user_views: Object.keys(userViews).length > 0 ? userViews : undefined,
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`Failed to start fetch (HTTP ${response.status})`);
-      }
-
-      // Read the Server-Sent Events stream: each event is a "data: <json>" line
-      // separated by a blank line. Accumulate status events into `progress`,
-      // and capture the final `result` payload.
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let data: any = null;
-
-      streamLoop: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() ?? '';
-        for (const chunk of chunks) {
-          const line = chunk.trim();
-          if (!line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (!payload) continue;
-          const evt = JSON.parse(payload) as {
-            type: string;
-            stage?: string;
-            detail?: string;
-            data?: Record<string, unknown>;
-          };
-          if (evt.type === 'status') {
-            const at = new Date().toLocaleTimeString([], { hour12: false });
-            setProgress((prev) => {
-              const last = prev[prev.length - 1];
-              if (last && last.stage === evt.stage && last.detail === evt.detail) return prev;
-              return [...prev, { stage: evt.stage ?? '', detail: evt.detail ?? '', at }];
-            });
-          } else if (evt.type === 'error') {
-            throw new Error(evt.detail || 'Fetch failed');
-          } else if (evt.type === 'result') {
-            data = evt.data ?? null;
-            break streamLoop;
-          }
-        }
-      }
-
-      if (!data) throw new Error('No data received from server');
-      setRawData(data);
-
-      // Convert to frontend format
-      const marketData: MarketData = {
-        valuations: data.valuations.map((v: Record<string, unknown>) => ({
-          region: v.region,
-          cape: v.cape,
-          forwardPe: v.forward_pe,
-          dividendYield: v.dividend_yield,
-          source: v.source,
-          date: v.date,
-        })),
-        volatility: data.volatility.map((v: Record<string, unknown>) => ({
-          asset: v.asset,
-          impliedVol: v.implied_vol,
-          realizedVol1Y: v.realized_vol_1y,
-          source: v.source,
-        })),
-        institutionalViews: data.institutional_views.map((v: Record<string, unknown>) => ({
-          region: v.region,
-          stance: v.stance,
-          sources: v.sources,
-          keyDrivers: v.key_drivers,
-          confidence: v.confidence as 'high' | 'medium' | 'low' | undefined,
-        })),
-        expectedReturns: data.expected_returns?.map((r: Record<string, unknown>) => ({
-          region: r.region,
-          return: r.return,
-          rationale: r.rationale,
-        })),
-        correlations: data.correlations ? {
-          assets: data.correlations.assets,
-          matrix: data.correlations.matrix,
-        } : undefined,
-        riskFreeRate: data.risk_free_rate,
-        bundYield10y: data.bund_yield_10y,
-        eurPlnRate: data.eur_pln_rate,
-        fetchedAt: data.fetched_at,
-        sources: data.sources,
-      };
-
-      setMarketData(marketData);
-      markStepComplete('market-data');
-    } catch (err) {
-      // A user-triggered abort isn't a real error — just leave a soft note.
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setProgress([]);
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to fetch market data');
-      }
-    } finally {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      abortRef.current = null;
-      setMarketDataLoading(false);
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
   };
 
-  const handleCancel = () => {
+  // Drive the "elapsed" counter from a wall-clock baseline so a reconnect can
+  // resume the count from when the job actually started (not from now).
+  const startTimer = (baselineMs: number) => {
+    startMsRef.current = baselineMs;
+    setElapsed(Math.max(0, Math.floor((Date.now() - baselineMs) / 1000)));
+    stopTimer();
+    timerRef.current = setInterval(
+      () => setElapsed(Math.max(0, Math.floor((Date.now() - startMsRef.current) / 1000))),
+      1000,
+    );
+  };
+
+  // Open the SSE stream and consume it. The backend runs the fetch as a
+  // background job, so this is just a *viewer*: aborting it (or refreshing)
+  // does not cancel the underlying fetch.
+  const connectStream = useCallback(
+    async (body: { force_refresh?: boolean; attach_only?: boolean }) => {
+      setError(null);
+      setProgress([]);
+      setMarketDataLoading(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const response = await fetch('/api/v1/market-data/gather/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            ...body,
+            // Only send regions the user explicitly took a stance on.
+            user_views: Object.keys(userViews).length > 0 ? userViews : undefined,
+          }),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Failed to start fetch (HTTP ${response.status})`);
+        }
+
+        // Read the SSE stream: each event is a "data: <json>" line separated by
+        // a blank line. Accumulate status events; capture the final result.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let data: any = null;
+        let idle = false;
+
+        streamLoop: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+          for (const chunk of chunks) {
+            const line = chunk.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload) continue;
+            const evt = JSON.parse(payload) as {
+              type: string;
+              stage?: string;
+              detail?: string;
+              at?: string;
+              data?: Record<string, unknown>;
+            };
+            if (evt.type === 'status') {
+              const at = evt.at ?? new Date().toLocaleTimeString([], { hour12: false });
+              setProgress((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.stage === evt.stage && last.detail === evt.detail) return prev;
+                return [...prev, { stage: evt.stage ?? '', detail: evt.detail ?? '', at }];
+              });
+            } else if (evt.type === 'idle') {
+              // attach_only and nothing running/cached — nothing to show.
+              idle = true;
+              break streamLoop;
+            } else if (evt.type === 'error') {
+              throw new Error(evt.detail || 'Fetch failed');
+            } else if (evt.type === 'result') {
+              data = evt.data ?? null;
+              break streamLoop;
+            }
+          }
+        }
+
+        if (idle) return;
+        if (!data) throw new Error('No data received from server');
+
+        setRawData(data);
+        setMarketData(toMarketData(data));
+        markStepComplete('market-data');
+      } catch (err) {
+        // Aborting the viewer (Cancel/refresh) isn't a real error.
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setProgress([]);
+        } else if (err instanceof Error && /cancel/i.test(err.message)) {
+          // Job was cancelled server-side — soft note, not an error banner.
+          setProgress([]);
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to fetch market data');
+        }
+      } finally {
+        stopTimer();
+        abortRef.current = null;
+        setMarketDataLoading(false);
+      }
+    },
+    [userViews, setMarketData, setMarketDataLoading, markStepComplete],
+  );
+
+  const handleFetchMarketData = () => {
+    startTimer(Date.now());
+    void connectStream({ force_refresh: true });
+  };
+
+  // On mount, re-attach to a fetch that's already running in the background
+  // (e.g. after a page refresh) so its live progress reappears.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/v1/market-data/gather/status');
+        if (!res.ok) return;
+        const status = (await res.json()) as {
+          running: boolean;
+          elapsed_seconds?: number | null;
+        };
+        if (cancelled || !status.running) return;
+        startTimer(Date.now() - (status.elapsed_seconds ?? 0) * 1000);
+        void connectStream({ attach_only: true });
+      } catch {
+        // status check is best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCancel = async () => {
+    // Cancel the background job (not just our viewer), then drop the stream.
+    try {
+      await fetch('/api/v1/market-data/gather/cancel', { method: 'POST' });
+    } catch {
+      // best-effort
+    }
     abortRef.current?.abort();
+    stopTimer();
+    setMarketDataLoading(false);
+    setProgress([]);
   };
 
   const handleContinue = () => {
@@ -291,7 +357,7 @@ export default function MarketDataPage() {
                 Cancel
               </button>
               <p className="text-xs text-gray-400">
-                Opus 4.8 with web search &amp; reasoning — this usually takes 1–3 min.
+                Sonnet 4.6 with web search &amp; reasoning — this usually takes 1–3 min.
               </p>
             </div>
           </div>

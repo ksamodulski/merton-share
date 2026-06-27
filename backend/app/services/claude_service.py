@@ -74,10 +74,11 @@ class ClaudeService:
         prompt = prompt_template.format(today=today, live_data_block=live_data_block)
 
         message = self.client.messages.create(
-            model=self.model,
-            max_tokens=16000,  # headroom for adaptive thinking + the JSON payload
-            thinking={"type": "adaptive"},  # better breaking-news → regional-impact reasoning
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 7}],
+            model=settings.market_data_model,
+            max_tokens=16000,  # headroom for thinking + the JSON payload
+            thinking={"type": "enabled", "budget_tokens": settings.market_data_thinking_budget},
+            tools=[{"type": "web_search_20260209", "name": "web_search",
+                    "max_uses": settings.market_data_max_searches}],
             messages=[
                 {
                     "role": "user",
@@ -127,10 +128,11 @@ class ClaudeService:
         final_text = None
         try:
             async with self.async_client.messages.stream(
-                model=self.model,
+                model=settings.market_data_model,
                 max_tokens=16000,
-                thinking={"type": "adaptive"},
-                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 7}],
+                thinking={"type": "enabled", "budget_tokens": settings.market_data_thinking_budget},
+                tools=[{"type": "web_search_20260209", "name": "web_search",
+                        "max_uses": settings.market_data_max_searches}],
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 async for event in stream:

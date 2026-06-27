@@ -122,6 +122,14 @@ class MarketDataRequest(BaseModel):
     """Request to gather market data."""
 
     force_refresh: bool = Field(False, description="Force refresh even if cached")
+    attach_only: bool = Field(
+        False,
+        description=(
+            "Attach to an in-progress background fetch (or serve cache) without "
+            "ever starting a new paid fetch. Used by the UI on page load/refresh "
+            "to re-attach to a running job."
+        ),
+    )
     user_views: Optional[Dict[str, str]] = Field(
         None,
         description=(

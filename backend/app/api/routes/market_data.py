@@ -1,7 +1,7 @@
 """Market data API routes."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
@@ -10,7 +10,6 @@ from app.config import get_settings
 from app.models.market_data import (
     MarketData,
     MarketDataRequest,
-    MarketDataSummary,
     Valuation,
     Volatility,
     InstitutionalView,
@@ -21,14 +20,11 @@ from app.models.market_data import (
     DEFAULT_VOLATILITIES,
     DEFAULT_DIVIDEND_YIELDS,
 )
-from app.services.claude_service import get_claude_service
+from app.services import market_data_cache as cache
+from app.services import market_data_job as jobs
 from app.core.view_mapping import apply_view_adjustments
 
 router = APIRouter()
-
-# Simple in-memory cache for market data
-_market_data_cache: MarketData | None = None
-_cache_timestamp: datetime | None = None
 
 settings = get_settings()
 
@@ -36,8 +32,8 @@ settings = get_settings()
 def _assemble_market_data(result: dict, user_views: dict | None) -> MarketData:
     """Convert Claude's raw JSON into a MarketData model, applying view blends.
 
-    Shared by the blocking ``/gather`` endpoint and the streaming
-    ``/gather/stream`` endpoint so the post-processing stays identical.
+    Pure post-processing over the raw fetch, so it can be re-run cheaply with
+    different ``user_views`` without re-calling Claude.
     """
     valuations = [
         Valuation(
@@ -128,41 +124,38 @@ def _assemble_market_data(result: dict, user_views: dict | None) -> MarketData:
     )
 
 
+def _cache_is_fresh() -> bool:
+    age = cache.age_hours()
+    return age is not None and age < settings.market_data_cache_hours
+
+
 @router.post("/gather", response_model=MarketData)
 async def gather_market_data(request: MarketDataRequest) -> MarketData:
     """
-    Gather current market data using Claude API.
+    Gather current market data using Claude API (blocking).
 
-    Collects:
-    - Valuations (CAPE, Forward P/E, Dividend Yield) for US, Europe, Japan, EM, Pacific
-    - Volatility (implied and realized) for major indices
-    - Institutional views from major firms
-    - Current rates (risk-free rate, EUR/PLN)
+    Runs via the shared background job so a concurrent streaming client sees the
+    same run, and the result is persisted for restart survival.
     """
-    global _market_data_cache, _cache_timestamp
+    raw, _ = cache.get()
 
-    # Check cache (skip when the user supplied their own views, since those
-    # change the blended expected returns and the cache is view-agnostic).
-    if not request.force_refresh and not request.user_views and _market_data_cache and _cache_timestamp:
-        age_hours = (datetime.utcnow() - _cache_timestamp).total_seconds() / 3600
-        if age_hours < settings.market_data_cache_hours:
-            return _market_data_cache
+    # Serve cache when allowed (view blends are re-applied on top regardless).
+    if not request.force_refresh and _cache_is_fresh() and raw is not None:
+        return _assemble_market_data(raw, request.user_views)
 
     try:
-        # Gather market data using Claude
-        claude = get_claude_service()
-        result = await claude.gather_market_data()
-
-        market_data = _assemble_market_data(result, request.user_views)
-
-        # Cache the result (only the view-agnostic version, so user-specific
-        # blends never leak into a later request that omits user views).
-        if not request.user_views:
-            _market_data_cache = market_data
-            _cache_timestamp = datetime.utcnow()
-
-        return market_data
-
+        job = jobs.start()
+        if job.task is not None:
+            await job.task
+        if job.status == "error":
+            raise RuntimeError(job.error or "Fetch failed")
+        if job.status == "cancelled":
+            raise RuntimeError("Fetch was cancelled")
+        if job.raw_result is None:
+            raise RuntimeError("No data returned from Claude")
+        return _assemble_market_data(job.raw_result, request.user_views)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -173,61 +166,83 @@ async def gather_market_data(request: MarketDataRequest) -> MarketData:
 @router.post("/gather/stream")
 async def gather_market_data_stream(request: MarketDataRequest) -> StreamingResponse:
     """
-    Streaming variant of ``/gather``.
+    Streaming variant of ``/gather`` backed by a server-side background job.
 
-    Emits Server-Sent Events so the UI can show live progress:
-      data: {"type": "status", "stage": ..., "detail": ...}
+    The actual Claude fetch runs in a detached task (see ``market_data_job``),
+    so a client disconnect (refresh/tab close) only stops *this* viewer — the
+    job keeps running and persists its result. Emits Server-Sent Events:
+      data: {"type": "status", "stage": ..., "detail": ..., "at": ...}
       data: {"type": "result", "data": <MarketData>}
       data: {"type": "error",  "detail": ...}
+      data: {"type": "idle"}   # attach_only and nothing running/cached
     """
 
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
 
     async def event_gen():
-        global _market_data_cache, _cache_timestamp
+        raw, _ = cache.get()
 
-        # Serve from cache when allowed (the UI normally forces a refresh).
-        if (not request.force_refresh and not request.user_views
-                and _market_data_cache and _cache_timestamp):
-            age_hours = (datetime.utcnow() - _cache_timestamp).total_seconds() / 3600
-            if age_hours < settings.market_data_cache_hours:
-                yield sse({"type": "status", "stage": "cache", "detail": "Loaded from cache"})
-                yield sse({"type": "result", "data": jsonable_encoder(_market_data_cache)})
+        # Serve cache when allowed (the UI normally forces a refresh).
+        if not request.force_refresh and _cache_is_fresh() and raw is not None:
+            yield sse({"type": "status", "stage": "cache", "detail": "Loaded from cache"})
+            yield sse({"type": "result",
+                       "data": jsonable_encoder(_assemble_market_data(raw, request.user_views))})
+            return
+
+        job = jobs.current()
+        if job is None or job.status != "running":
+            if request.attach_only:
+                # Don't start a paid fetch on a passive re-attach. Hand back the
+                # last result if we have one, else signal idle.
+                if raw is not None:
+                    yield sse({"type": "result",
+                               "data": jsonable_encoder(_assemble_market_data(raw, request.user_views))})
+                else:
+                    yield sse({"type": "idle"})
                 return
+            job = jobs.start()
 
-        claude = get_claude_service()
-        raw_result = None
-        try:
-            async for ev in claude.gather_market_data_streaming():
-                if ev.get("type") == "result":
-                    raw_result = ev["data"]
-                    break
-                if ev.get("type") == "error":
-                    yield sse(ev)
-                    return
-                yield sse(ev)
-        except Exception as e:  # noqa: BLE001 — surfaced to the client as an error event
-            yield sse({"type": "error", "detail": f"Failed to gather market data: {e}"})
-            return
+        # Replay buffered progress, then stream live until the job finishes.
+        async for ev in jobs.stream_events(job):
+            yield sse(ev)
 
-        if raw_result is None:
-            yield sse({"type": "error", "detail": "No data returned from Claude"})
-            return
-
-        try:
-            market_data = _assemble_market_data(raw_result, request.user_views)
-        except Exception as e:  # noqa: BLE001
-            yield sse({"type": "error", "detail": f"Failed to assemble market data: {e}"})
-            return
-
-        if not request.user_views:
-            _market_data_cache = market_data
-            _cache_timestamp = datetime.utcnow()
-
-        yield sse({"type": "result", "data": jsonable_encoder(market_data)})
+        if job.status == "done" and job.raw_result is not None:
+            yield sse({"type": "result",
+                       "data": jsonable_encoder(_assemble_market_data(job.raw_result, request.user_views))})
+        elif job.status == "cancelled":
+            yield sse({"type": "error", "detail": "Fetch was cancelled"})
+        else:
+            yield sse({"type": "error", "detail": job.error or "Fetch failed"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.get("/gather/status")
+async def gather_status() -> dict:
+    """Lightweight status of the background fetch — for the UI's live indicator
+    (and quick checks via curl)."""
+    job = jobs.current()
+    age = cache.age_hours()
+    return {
+        "running": jobs.is_running(),
+        "job_id": job.id if job else None,
+        "status": job.status if job else None,
+        "started_at": job.started_at.isoformat() if job else None,
+        "elapsed_seconds": job.elapsed_seconds if job else None,
+        "events": job.events if job else [],
+        "error": job.error if job else None,
+        "has_cache": age is not None,
+        "cache_age_hours": round(age, 2) if age is not None else None,
+        "cache_is_stale": (age is not None and age > settings.market_data_cache_hours),
+    }
+
+
+@router.post("/gather/cancel")
+async def gather_cancel() -> dict:
+    """Cancel the running background fetch, if any."""
+    cancelled = await jobs.cancel()
+    return {"cancelled": cancelled}
 
 
 @router.get("/cached")
@@ -235,25 +250,19 @@ async def get_cached_market_data() -> dict:
     """
     Get cached market data if available.
     """
-    global _market_data_cache, _cache_timestamp
-
-    if not _market_data_cache:
+    raw, ts = cache.get()
+    if raw is None:
         return {
             "cached": False,
             "message": "No cached market data available",
         }
 
-    age_hours = (
-        (datetime.utcnow() - _cache_timestamp).total_seconds() / 3600
-        if _cache_timestamp
-        else 0
-    )
-
+    age = cache.age_hours() or 0
     return {
         "cached": True,
-        "data": _market_data_cache,
-        "age_hours": round(age_hours, 2),
-        "is_stale": age_hours > settings.market_data_cache_hours,
+        "data": _assemble_market_data(raw, None),
+        "age_hours": round(age, 2),
+        "is_stale": age > settings.market_data_cache_hours,
     }
 
 

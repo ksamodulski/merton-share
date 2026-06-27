@@ -15,9 +15,20 @@ class Settings(BaseSettings):
     # Anthropic API
     anthropic_api_key: str = ""
     claude_model: str = "claude-opus-4-8"
+    # The market-data fetch is web-search-driven gathering, not deep reasoning,
+    # so it runs on a faster/cheaper model with bounded thinking and fewer
+    # searches to keep latency and cost down (Opus + adaptive thinking + 7
+    # searches was taking ~20 min and several dollars per run).
+    market_data_model: str = "claude-sonnet-4-6"
+    market_data_thinking_budget: int = 6000
+    market_data_max_searches: int = 4
 
     # Cache settings
     market_data_cache_hours: int = 24
+    # File the in-memory market-data cache is persisted to, so a restart can
+    # reload the last fetch instead of paying for another Claude run. Relative
+    # paths are resolved against the backend root.
+    market_data_cache_file: str = "data/market_data_cache.json"
 
     # Methodology settings
     use_views_in_optimization: bool = False  # Enable BL-lite view blending
