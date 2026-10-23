@@ -14,13 +14,13 @@ class Settings(BaseSettings):
 
     # Anthropic API
     anthropic_api_key: str = ""
-    claude_model: str = "claude-opus-4-8"
+    claude_model: str = "claude-opus-5-5"
     # The market-data fetch is web-search-driven gathering, not deep reasoning,
-    # so it runs on a faster/cheaper model with bounded thinking and fewer
+    # so it runs on a faster/cheaper model at reduced effort and with fewer
     # searches to keep latency and cost down (Opus + adaptive thinking + 7
     # searches was taking ~20 min and several dollars per run).
-    market_data_model: str = "claude-sonnet-4-6"
-    market_data_thinking_budget: int = 6000
+    market_data_model: str = "claude-sonnet-5-5"
+    market_data_effort: str = "medium"
     market_data_max_searches: int = 4
 
     # Cache settings

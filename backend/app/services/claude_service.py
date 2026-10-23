@@ -14,6 +14,13 @@ settings = get_settings()
 # Prompts directory
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
+# If the model's safety classifiers decline a request, re-run it server-side on
+# Anthropic's recommended fallback model instead of returning the refusal.
+FALLBACK_OPTIONS = {
+    "extra_headers": {"anthropic-beta": "server-side-fallback-2026-07-01"},
+    "extra_body": {"fallbacks": "default"},
+}
+
 
 def load_prompt(name: str) -> str:
     """Load a prompt from the prompts directory."""
@@ -52,6 +59,19 @@ class ClaudeService:
 
         raise ValueError("No valid JSON found in response")
 
+    @staticmethod
+    def _final_text(message) -> str:
+        """Return the last text block, after thinking / tool-use blocks."""
+        if message.stop_reason == "refusal":
+            raise ValueError("Claude declined the request")
+        text = next(
+            (block.text for block in reversed(message.content) if block.type == "text"),
+            None,
+        )
+        if text is None:
+            raise ValueError("No text block found in Claude response")
+        return text
+
     async def gather_market_data(self) -> dict:
         """
         Gather current market data: live numbers from yfinance, qualitative from Claude.
@@ -76,7 +96,8 @@ class ClaudeService:
         message = self.client.messages.create(
             model=settings.market_data_model,
             max_tokens=16000,  # headroom for thinking + the JSON payload
-            thinking={"type": "enabled", "budget_tokens": settings.market_data_thinking_budget},
+            thinking={"type": "adaptive"},
+            output_config={"effort": settings.market_data_effort},
             tools=[{"type": "web_search_20260209", "name": "web_search",
                     "max_uses": settings.market_data_max_searches}],
             messages=[
@@ -85,17 +106,12 @@ class ClaudeService:
                     "content": prompt,
                 }
             ],
+            **FALLBACK_OPTIONS,
         )
 
         # With web search the response contains server_tool_use / web_search_tool_result
-        # blocks before the final text block — find the last text block.
-        text = next(
-            (block.text for block in reversed(message.content) if block.type == "text"),
-            None,
-        )
-        if text is None:
-            raise ValueError("No text block found in Claude response")
-        return self._extract_json(text)
+        # blocks before the final text block.
+        return self._extract_json(self._final_text(message))
 
     async def gather_market_data_streaming(self) -> AsyncIterator[dict]:
         """
@@ -130,10 +146,12 @@ class ClaudeService:
             async with self.async_client.messages.stream(
                 model=settings.market_data_model,
                 max_tokens=16000,
-                thinking={"type": "enabled", "budget_tokens": settings.market_data_thinking_budget},
+                thinking={"type": "adaptive"},
+                output_config={"effort": settings.market_data_effort},
                 tools=[{"type": "web_search_20260209", "name": "web_search",
                         "max_uses": settings.market_data_max_searches}],
                 messages=[{"role": "user", "content": prompt}],
+                **FALLBACK_OPTIONS,
             ) as stream:
                 async for event in stream:
                     et = event.type
@@ -146,7 +164,10 @@ class ClaudeService:
                             yield {"type": "status", "stage": "compiling",
                                    "detail": "Compiling results"}
                         elif blk.type == "server_tool_use" and getattr(blk, "name", None) == "web_search":
-                            search_json[event.index] = ""
+                            # Some models send the full input on block start
+                            # instead of as input_json_delta events.
+                            start_input = getattr(blk, "input", None)
+                            search_json[event.index] = json.dumps(start_input) if start_input else ""
                     elif et == "content_block_delta":
                         delta = event.delta
                         if getattr(delta, "type", None) == "input_json_delta" and event.index in search_json:
@@ -160,6 +181,9 @@ class ClaudeService:
                         yield {"type": "status", "stage": "search",
                                "detail": f"Searching: {query}" if query else "Searching the web"}
                 final = await stream.get_final_message()
+            if final.stop_reason == "refusal":
+                yield {"type": "error", "detail": "Claude declined the request"}
+                return
             final_text = next(
                 (b.text for b in reversed(final.content) if b.type == "text"),
                 None,
@@ -196,16 +220,18 @@ class ClaudeService:
 
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=8000,  # headroom for thinking + the JSON payload
+            output_config={"effort": "low"},
             messages=[
                 {
                     "role": "user",
                     "content": prompt,
                 }
             ],
+            **FALLBACK_OPTIONS,
         )
 
-        result = self._extract_json(message.content[0].text)
+        result = self._extract_json(self._final_text(message))
 
         # Handle {"results": [...]} format from prompt
         if isinstance(result, dict) and "results" in result:
