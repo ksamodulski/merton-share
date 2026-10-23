@@ -41,3 +41,6 @@ npm-debug.log*
 
 # Run scripts (PID/log files)
 .run/
+
+# Runtime market-data cache
+backend/data/
